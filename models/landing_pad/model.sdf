@@ -1,0 +1,30 @@
+<sdf version='1.6'>
+  <model name='landing_pad'>
+    <link name="link">
+      <!-- <pose>0 0 0 0 0 0</pose> -->
+      <visual name="visual">
+            <geometry>
+                <mesh>
+                  <scale>0.5 0.5 0.5</scale>
+                  <uri>model://landing_pad/meshes/landing_pad.dae</uri>
+                </mesh>
+            </geometry>
+        </visual>
+        <collision name="collision">
+            <geometry>
+                <mesh>
+                    <uri>model://landing_pad/meshes/landing_pad.dae</uri>
+                </mesh>
+            </geometry>
+        </collision>
+        <inertial>
+      <mass value="0.01"/> <!-- Mass in kg -->
+      <origin xyz="0 0 0" rpy="0 0 0"/> <!-- Center of mass at the origin -->
+      <inertia ixx="0.00002133" ixy="0.0" ixz="0.0"
+               iyy="0.00002133" iyz="0.0"
+               izz="0.00002133"/> <!-- Inertia tensor values -->
+    </inertial>
+
+    </link>
+  </model>
+</sdf>

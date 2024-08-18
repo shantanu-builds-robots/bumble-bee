@@ -1,0 +1,34 @@
+<sdf version='1.6'>
+  <model name='box_0'>
+    <link name="link">
+      <!-- <pose>0 0 0 0 0 0</pose> -->
+      <visual name="visual">
+            <geometry>
+                <mesh>
+                  <scale>1 1 1</scale>
+                  <uri>model://box_0/meshes/box_0.dae</uri>
+                </mesh>
+            </geometry>
+        </visual>
+        <collision name="collision">
+            <geometry>
+                <mesh>
+                    <uri>model://box_0/meshes/box_0.dae</uri>
+                </mesh>
+            </geometry>
+        </collision>
+        <inertial>
+        <mass>0.01</mass> <!-- Mass in kg -->
+        <inertia>
+          <ixx>0.00002133</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>0.00002133</iyy>
+          <iyz>0.0</iyz>
+          <izz>0.00002133</izz>
+        </inertia>
+      </inertial>
+
+    </link>
+  </model>
+</sdf>
