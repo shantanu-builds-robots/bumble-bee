@@ -25,9 +25,6 @@ Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for 
 | **Mission** | Visits 4 pick-up spots and 4 drop zones: fly over, descend, grip, carry, release | `drone_delivery/src/pick_and_drop.cpp` |
 | **Perception** | Detects and labels the ArUco (4×4) ID on each box from the downward camera | `drone_delivery/scripts/aruco_detector.py` |
 
-> `drone_plugin` was rebuilt from the write-up above after the original package was lost; its
-> interface matches what `fly` and `deliver` expect, and a headless run completes a full pick-up and drop-off.
->
 > The detector currently visualizes IDs; pick-up and drop-off coordinates are fixed in
 > `pick_and_drop.cpp`. Feeding detections into the mission is the natural next step.
 
