@@ -20,7 +20,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 # The URDF loads this as filename="libdrone.so", so the target must be `drone`.
-add_library(drone SHARED src/drone_plugin.cpp)
+add_library(drone SHARED src/drone_plugin_.cpp)
 target_include_directories(drone PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
