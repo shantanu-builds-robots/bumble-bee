@@ -48,7 +48,7 @@ Requires ROS 2 Humble and Gazebo Classic 11.
 
 ```bash
 mkdir -p ~/bee_ws/src && cd ~/bee_ws/src
-git clone https://github.com/shantanuparabumd/drone_delivery.git
+git clone https://github.com/shantanuparabumd/bumble-bee.git
 cd ~/bee_ws
 rosdep install --from-paths src --ignore-src -y
 colcon build && source install/setup.bash
