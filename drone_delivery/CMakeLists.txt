@@ -27,6 +27,8 @@ find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(drone_plugin REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_kdl REQUIRED)
+find_package(orocos_kdl REQUIRED)
 
 include_directories(include)
 include_directories(
@@ -42,6 +44,7 @@ set(GROUP3_INCLUDE_DEPENDS
   orocos_kdl
   tf2_ros
   tf2_geometry_msgs
+  tf2_kdl
   drone_plugin
   
 )
@@ -55,6 +58,7 @@ ament_target_dependencies(deliver  ${GROUP3_INCLUDE_DEPENDS})
 
 install(DIRECTORY
   launch
+  models
   worlds
   urdf
   meshes
