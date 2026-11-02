@@ -1,0 +1,6 @@
+/brag-output*/
+build/
+install/
+log/
+__pycache__/
+*.pyc
