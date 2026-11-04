@@ -22,7 +22,7 @@ Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for 
 |---|---|---|
 | **Flight plugin** | Thrust `c₂ω² + c₁ω + c₀` along each rotor axis (rotor speed capped at 3000 rad/s); reaction torque `κ·thrust` on the body, whose net yaws the drone | `drone_plugin/src/drone_plugin_.cpp` |
 | **Vacuum gripper** | When the gripper is enabled and all four landing legs touch the same box, the box is welded to the body with a fixed joint | `drone_plugin` |
-| **Flight controller** | 100 Hz cascaded PID: x/y position → tilt, then height, roll, pitch and yaw → per-rotor speeds around the hover speed; switches gains when carrying a parcel (738.7 → 780.6 rad/s hover speed) | `drone_delivery/src/fly.cpp` |
+| **Flight controller** | 100 Hz cascaded PID: x/y position → tilt, then height, roll, pitch and yaw → per-rotor speeds around the hover speed; switches gains when carrying a parcel (738.4 → 780.2 rad/s hover speed) | `drone_delivery/src/fly.cpp` |
 | **Mission** | Visits 4 pick-up spots and 4 drop zones: fly over, descend, grip, carry, release | `drone_delivery/src/pick_and_drop.cpp` |
 | **Perception** | Detects and labels the ArUco (4×4) ID on each box from the downward camera | `drone_delivery/scripts/aruco_detector.py` |
 
@@ -39,13 +39,13 @@ The inertia uses Flightmare's own formula with this frame's arm length.
 
 | Quantity | Value | Where |
 |---|---|---|
-| Mass | 0.73 kg: body 0.696, four 5 g props, four 2 g legs, 5 g camera, 1 g IMU | `drone.urdf.xacro` |
+| Mass | 0.73 kg: body 0.697, four 5 g props, four 2 g legs, 5 g camera | `drone.urdf.xacro` |
 | Arm length | 0.12 m (240 mm motor-to-motor diagonal) | SolidWorks model |
 | Inertia | diag(0.003942, 0.003942, 0.006132) kg·m², from `m/12 · l² · diag(4.5, 4.5, 7)` | `drone.urdf.xacro` |
 | Thrust per rotor | `1.3298e-6·ω² + 0.003836·ω − 1.769` N, never negative | `<thrustMap>` in the URDF |
 | Yaw reaction torque | `κ = 0.016` N·m per N of thrust | `<torqueToThrust>` |
 | Max rotor speed | 3000 rad/s (21.7 N per rotor, thrust-to-weight ≈ 12) | `<maxRotorSpeed>` |
-| Hover speed | 738.7 rad/s empty, 780.6 rad/s with a parcel | `fly.cpp` |
+| Hover speed | 738.4 rad/s empty, 780.2 rad/s with a parcel (g = 9.8 m/s², as in the world) | `fly.cpp` |
 | Parcel | 0.1 kg, 12 cm cube | `models/box_*/model.sdf`, `worlds/delivery_area.world` |
 
 > The [Medium write-up](https://medium.com/@shantanuparab99/unleashing-the-power-of-simulation-engines-writing-plugins-for-enhanced-drone-simulations-ab7c847ca432)

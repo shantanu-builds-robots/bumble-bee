@@ -286,9 +286,10 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     geometry_msgs::msg::PoseStamped pose_;
     // Rotor speeds [rad/s] that hold the drone in a hover, from the plugin's thrust map
-    // (c2 w^2 + c1 w + c0 per rotor) with a 0.73 kg drone, and with a 0.1 kg parcel attached.
-    static constexpr double kHoverSpeed = 738.7;
-    static constexpr double kHoverSpeedLoaded = 780.6;
+    // (c2 w^2 + c1 w + c0 per rotor) with a 0.73 kg drone, and with a 0.1 kg parcel attached, at g = 9.8 m/s^2
+    // (the world's gravity).
+    static constexpr double kHoverSpeed = 738.4;
+    static constexpr double kHoverSpeedLoaded = 780.2;
     double base_speed_ = kHoverSpeed;
     // Loop timing
     static constexpr double kNominalDt = 0.01;

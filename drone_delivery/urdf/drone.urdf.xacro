@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro" name="drone_delivery">
   <!-- Mass model. Whole drone 0.73 kg, the default quadrotor in Flightmare (UZH Robotics and Perception Group).
-       Body 0.696 kg, four 5 g props, four 2 g legs, 5 g camera, 1 g IMU.
+       Body 0.697 kg, four 5 g props, four 2 g legs, 5 g camera.
        Whole-drone inertia uses Flightmare's formula J = m/12 * l^2 * diag(4.5, 4.5, 7) with this frame's 0.12 m arm,
        giving diag(0.003942, 0.003942, 0.006132) kg m^2. The body values below are that minus the props' share. -->
-  <xacro:property name="mass" value="0.696"/>
+  <xacro:property name="mass" value="0.697"/>
   <material name="blue">
     <color rgba= "0 0 1 1"/>
   </material>
