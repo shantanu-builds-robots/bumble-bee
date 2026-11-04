@@ -80,6 +80,25 @@ ros2 run drone_delivery deliver                    # delivery mission    (new te
 ros2 run drone_delivery aruco_detector.py          # optional: camera view with ArUco IDs
 ```
 
+### Launch options
+
+`gazebo.launch.py` takes these arguments (defaults in brackets):
+
+| Argument | Meaning |
+|---|---|
+| `world:=<path>` | Full path of the `.world` file to load [the package's `worlds/delivery_area.world`] |
+| `headless:=true` | Physics only, no Gazebo window [`false`] |
+| `pause:=true` | Start with physics paused; unpause with the `/unpause_physics` service [`false`] |
+| `x:=` `y:=` `z:=` `yaw:=` | Drone spawn pose in metres and radians [`0.5 0.5 0.1 0.0`] |
+
+```bash
+ros2 launch drone_delivery gazebo.launch.py headless:=true pause:=true z:=2.0 \
+    world:=$(ros2 pkg prefix drone_delivery)/share/drone_delivery/worlds/empty_world.world
+```
+
+Obstacle and race courses for this drone, plus a MuJoCo twin of it, live in the companion
+`bumble-bee-gym` repo. It generates `.world` files you can pass straight to `world:=`.
+
 ### Run with Docker
 
 No local ROS install needed: the image has ROS 2 Humble, Gazebo Classic 11 and Bumble Bee already built. From the repository root:

@@ -25,11 +25,9 @@ def generate_launch_description():
 
     package_description = "drone_delivery"
 
-    # Position and orientation
-    # [X, Y, Z]
-    position = [0.5, 0.5, 0.1]
-    # [Roll, Pitch, Yaw]
-    orientation = [0.0, 0.0, 0.0]
+    # Spawn pose, overridable from the command line: x:=, y:=, z:=, yaw:= (yaw in radians)
+    position = [LaunchConfiguration('x'), LaunchConfiguration('y'), LaunchConfiguration('z')]
+    orientation = ['0.0', '0.0', LaunchConfiguration('yaw')]
     # Base Name or robot
     robot_base_name = "drone"
     ####### DATA INPUT END ##########
@@ -58,10 +56,8 @@ def generate_launch_description():
         output='screen',
         arguments=['-entity',
                    entity_name,
-                   '-x', str(position[0]), '-y', str(position[1]
-                                                     ), '-z', str(position[2]),
-                   '-R', str(orientation[0]), '-P', str(orientation[1]
-                                                        ), '-Y', str(orientation[2]),
+                   '-x', position[0], '-y', position[1], '-z', position[2],
+                   '-R', orientation[0], '-P', orientation[1], '-Y', orientation[2],
                    '-topic', '/robot_description'
                    ]
     )
@@ -155,6 +151,10 @@ def generate_launch_description():
                                             description='Flag to enable joint_state_publisher_gui'),
             launch.actions.DeclareLaunchArgument(name='use_sim_time', default_value='True',
                                             description='Flag to enable use_sim_time'),
+            launch.actions.DeclareLaunchArgument(name='x', default_value='0.5', description='Spawn x [m]'),
+            launch.actions.DeclareLaunchArgument(name='y', default_value='0.5', description='Spawn y [m]'),
+            launch.actions.DeclareLaunchArgument(name='z', default_value='0.1', description='Spawn z [m]'),
+            launch.actions.DeclareLaunchArgument(name='yaw', default_value='0.0', description='Spawn yaw [rad]'),
             publish_robot_description,
             joint_state_publisher_node,
             robot_state_publisher,
