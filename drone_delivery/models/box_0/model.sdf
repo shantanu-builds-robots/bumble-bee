@@ -18,14 +18,15 @@
             </geometry>
         </collision>
         <inertial>
-        <mass>0.01</mass> <!-- Mass in kg -->
+        <!-- 100 g parcel, 12 cm cube -->
+        <mass>0.1</mass>
         <inertia>
-          <ixx>0.00002133</ixx>
-          <ixy>0.0</ixy>
-          <ixz>0.0</ixz>
-          <iyy>0.00002133</iyy>
-          <iyz>0.0</iyz>
-          <izz>0.00002133</izz>
+          <ixx>0.00024</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00024</iyy>
+          <iyz>0</iyz>
+          <izz>0.00024</izz>
         </inertia>
       </inertial>
 

@@ -5,6 +5,7 @@
 #include <std_msgs/msg/float64_multi_array.hpp>
 #include <drone_plugin/msg/motor_speed.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <algorithm>
 #include <cmath>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -25,7 +26,8 @@ public:
     RCLCPP_INFO(get_logger(), "Fly node has been created.");
     publisher_ = this->create_publisher<drone_plugin::msg::MotorSpeed>("motor_speed", 10);
     subscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("drone_pose", 10,std::bind(&Fly::pose_callback, this, std::placeholders::_1));
-    timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&Fly::timer_callback, this));
+    // 100 Hz control loop: attitude control on a 0.73 kg quad needs a fast loop
+    timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&Fly::timer_callback, this));
 
 
     height_sub_ = this->create_subscription<std_msgs::msg::Float64>("height", 10, std::bind(&Fly::height_callback, this, std::placeholders::_1));
@@ -45,17 +47,17 @@ public:
         part_attached = msg->data;
         if (part_attached){
             RCLCPP_INFO_STREAM(get_logger(), "Part attached Gain Changed");
-            base_speed_ = 118.0;
-            kp = 12.5;
-            ki = 0.3;
-            kd = 7.1;
+            base_speed_ = kHoverSpeedLoaded;
+            kp = 143.3;
+            ki = 45.5;
+            kd = 113.7;
 
         } else {
             RCLCPP_INFO_STREAM(get_logger(), "Part detached Gain Changed");
-            base_speed_ = 117.0;
-            kp = 11.5;
-            ki = 0.2;
-            kd = 7.1;
+            base_speed_ = kHoverSpeed;
+            kp = 126.0;
+            ki = 40.0;
+            kd = 100.0;
         }
     }
 
@@ -133,10 +135,17 @@ std::array<double, 3> get_euler_from_quaternion(tf2::Quaternion quaternion)
     }
 
 void timer_callback()
-{   
-    
-    // Target height to hover at
-    
+{
+    // One time step per tick, shared by every loop
+    const rclcpp::Time now = this->get_clock()->now();
+    const bool first_tick = !have_tick_;
+    double dt = first_tick ? kNominalDt : (now - last_tick_).seconds();
+    last_tick_ = now;
+    have_tick_ = true;
+    if (first_tick || dt <= 0.0 || dt > 0.5) {
+        dt = kNominalDt;
+    }
+
     if (target_height == 0.0){
         float prop_1 = 0.0;
         float prop_2 = 0.0;
@@ -147,17 +156,14 @@ void timer_callback()
         message.name = std::vector<std::string>{"prop_1","prop_2","prop_3","prop_4"};
         message.velocity = std::vector<float>{prop_1, -prop_2, prop_3, -prop_4};
         publisher_->publish(message);
-    } 
+    }
     else {
         // Calculate the control signal for height control
-        double velocity_ = PID_height_control(target_height);
+        double velocity_ = PID_height_control(target_height, dt, first_tick);
 
-        std::array<double, 3> rpy = getRollPitchYaw(target_x, target_y);
-        // rpy = {0.0, 0.0, 0.0};
-        RCLCPP_INFO_STREAM(get_logger(), "Roll: " << rpy.at(0) << " " << "Pitch: " << rpy.at(1) << " " << "Yaw: " << rpy.at(2));
+        std::array<double, 3> rpy = getRollPitchYaw(target_x, target_y, dt, first_tick);
         // Calculate the control signal for orientation control
-        std::array<double, 6> orientation_velocity = PID_orientation_control(rpy.at(0), rpy.at(1), rpy.at(2));
-        // std::array<double, 3> orientation_velocity = {0.0, 0.0, 0.0};
+        std::array<double, 6> orientation_velocity = PID_orientation_control(rpy.at(0), rpy.at(1), rpy.at(2), dt, first_tick);
 
         float prop_1 = static_cast<float>(base_speed_+ velocity_  + orientation_velocity.at(0) + orientation_velocity.at(1) + orientation_velocity.at(2));
         float prop_2 = static_cast<float>(base_speed_ + velocity_ + orientation_velocity.at(0) - orientation_velocity.at(1) - orientation_velocity.at(2));
@@ -168,126 +174,99 @@ void timer_callback()
         message.name = std::vector<std::string>{"prop_1","prop_2","prop_3","prop_4"};
         message.velocity = std::vector<float>{prop_1, -prop_2, prop_3, -prop_4};
         publisher_->publish(message);
-        RCLCPP_INFO_STREAM(get_logger(), "Prop 1: " << prop_1 << " " << "Prop 2: " << prop_2 << " " << "Prop 3: " << prop_3 << " " << "Prop 4: " << prop_4);
-        RCLCPP_INFO_STREAM(get_logger(), "Heigth: "<<pose_.pose.position.z<<" Roll: " << orientation_velocity.at(3) << " " << "Pitch: " << orientation_velocity.at(4) << " " << "Yaw: " << orientation_velocity.at(5));
-        RCLCPP_INFO_STREAM(get_logger(), "Error: "<< rpy.at(2)- orientation_velocity.at(5) << " Control Signal: "<< orientation_velocity.at(2));
-        RCLCPP_INFO_STREAM(get_logger(), "X: " <<target_x << " " << "Y: " << target_y << " " << "Z: " << target_height);
+
+        // Log once a second; the loop runs at 100 Hz
+        RCLCPP_INFO_STREAM_THROTTLE(get_logger(), *get_clock(), 1000,
+            "Props: " << prop_1 << " " << prop_2 << " " << prop_3 << " " << prop_4
+            << " | Height: " << pose_.pose.position.z
+            << " | Roll/Pitch/Yaw: " << orientation_velocity.at(3) << " " << orientation_velocity.at(4) << " " << orientation_velocity.at(5)
+            << " | Target: " << target_x << " " << target_y << " " << target_height);
     }
-    
+
 }
 
-std::array<double, 3> getRollPitchYaw(double target_x, double target_y){
-    double x = pose_.pose.position.x;
-    double y = pose_.pose.position.y;
-    
-    // RCLCPP_INFO_STREAM(get_logger(), "X: " << x << " " << "Y: " << y);
-    double x_error = target_x - x;
-    double y_error = target_y - y;
-    // RCLCPP_INFO_STREAM(get_logger(), "X error: " << x_error << " " << "Y error: " << y_error);
+// Position loop: x/y error -> desired tilt [rad], clamped to +-0.35 rad.
+// Derivative is taken on the measurement so a new waypoint does not cause a kick.
+std::array<double, 3> getRollPitchYaw(double target_x, double target_y, double dt, bool first_tick){
+    const double x = pose_.pose.position.x;
+    const double y = pose_.pose.position.y;
+    if (first_tick) {
+        x_prev_ = x;
+        y_prev_ = y;
+    }
 
-    rclcpp::Time current_time = this->get_clock()->now();
+    const double x_error = target_x - x;
+    const double y_error = target_y - y;
 
-    rclcpp::Duration dt = current_time - this->current_time;
-    this->current_time = current_time;
+    x_integral += x_error * dt;
+    y_integral += y_error * dt;
 
-
-
-    x_integral += x_error * dt.seconds();
-    y_integral += y_error * dt.seconds();
-
-    double x_derivative = (x_error - x_prev_error) / dt.seconds();
-    double y_derivative = (y_error - y_prev_error) / dt.seconds();
-
-    x_prev_error = x_error;
-    y_prev_error = y_error;
+    const double x_derivative = -(x - x_prev_) / dt;
+    const double y_derivative = -(y - y_prev_) / dt;
+    x_prev_ = x;
+    y_prev_ = y;
 
     double x_control_signal = x_kp * x_error + x_ki * x_integral + x_kd * x_derivative;
     double y_control_signal = y_kp * y_error + y_ki * y_integral + y_kd * y_derivative;
 
-    if (x_control_signal >  0.35){
-        x_control_signal =  0.35;
-    } else if (x_control_signal < -0.35){
-        x_control_signal = -0.35;
-    }
-    if (y_control_signal >  0.35){
-        y_control_signal =  0.35;
-    } else if (y_control_signal < -0.35){
-        y_control_signal = -0.35;
-    }
+    x_control_signal = std::clamp(x_control_signal, -kMaxTilt, kMaxTilt);
+    y_control_signal = std::clamp(y_control_signal, -kMaxTilt, kMaxTilt);
+
     std::array<double, 3> rpy = { -y_control_signal, x_control_signal, 0.0};
 
     return rpy;
-
-
-
-}
-double PID_height_control(double target_height)
-{       
-    rclcpp::Time current_time = this->get_clock()->now();
-
-    // Calculate the error between the target height and current height
-    double error = target_height - pose_.pose.position.z;
-
-    // Update the integral term
-    rclcpp::Duration dt = current_time - this->current_time;
-    this->current_time = current_time;
-    integral += error * dt.seconds();
-
-    // Calculate the derivative term
-    double derivative = (error - prev_error) / dt.seconds();
-
-    // Calculate the control signal using PID control
-    double control_signal = kp * error + ki * integral + kd * derivative;
-
-    // Adjust the base speed based on the control signal
-    double velocity_ = control_signal;
-
-    // Update the previous error for the next iteration
-    prev_error = error;
-
-    return velocity_;
 }
 
-std::array<double,6> PID_orientation_control(double roll, double pitch, double yaw)
+// Height loop: height error -> change in all four rotor speeds [rad/s]
+double PID_height_control(double target_height, double dt, bool first_tick)
+{
+    const double z = pose_.pose.position.z;
+    if (first_tick) {
+        z_prev_ = z;
+    }
+    const double error = target_height - z;
+
+    integral = std::clamp(integral + error * dt, -kMaxHeightIntegral, kMaxHeightIntegral);
+    const double derivative = -(z - z_prev_) / dt;
+    z_prev_ = z;
+
+    return kp * error + ki * integral + kd * derivative;
+}
+
+// Attitude loop: desired roll/pitch/yaw -> rotor-speed differences [rad/s].
+// Returns {roll, pitch, yaw outputs, measured roll, pitch, yaw}.
+std::array<double,6> PID_orientation_control(double roll, double pitch, double yaw, double dt, bool first_tick)
 {
     // Get the current orientation of the drone
     tf2::Quaternion quaternion;
     tf2::fromMsg(pose_.pose.orientation, quaternion);
     std::array<double, 3> rpy = get_euler_from_quaternion(quaternion);
+    if (first_tick) {
+        roll_prev_ = rpy.at(0);
+        pitch_prev_ = rpy.at(1);
+        yaw_prev_ = rpy.at(2);
+    }
 
-    double roll_error = roll - rpy.at(0);
-    double pitch_error = pitch - rpy.at(1);
-    double yaw_error = yaw - rpy.at(2);
+    const double roll_error = roll - rpy.at(0);
+    const double pitch_error = pitch - rpy.at(1);
+    const double yaw_error = std::remainder(yaw - rpy.at(2), 2.0 * M_PI);
 
-    rclcpp::Time current_time = this->get_clock()->now();
+    roll_integral = std::clamp(roll_integral + roll_error * dt, -kMaxAttitudeIntegral, kMaxAttitudeIntegral);
+    pitch_integral = std::clamp(pitch_integral + pitch_error * dt, -kMaxAttitudeIntegral, kMaxAttitudeIntegral);
+    yaw_integral = std::clamp(yaw_integral + yaw_error * dt, -kMaxAttitudeIntegral, kMaxAttitudeIntegral);
 
-    // Update the integral term
-    rclcpp::Duration dt = current_time - this->current_time;
-    this->current_time = current_time;
-    
-    roll_integral += roll_error * dt.seconds();
-    pitch_integral += pitch_error * dt.seconds();
-    yaw_integral += yaw_error * dt.seconds();
+    const double roll_derivative = -(rpy.at(0) - roll_prev_) / dt;
+    const double pitch_derivative = -(rpy.at(1) - pitch_prev_) / dt;
+    const double yaw_derivative = -std::remainder(rpy.at(2) - yaw_prev_, 2.0 * M_PI) / dt;
+    roll_prev_ = rpy.at(0);
+    pitch_prev_ = rpy.at(1);
+    yaw_prev_ = rpy.at(2);
 
-    // Calculate the derivative term
-    double roll_derivative = (roll_error - roll_prev_error) / dt.seconds();
-    double pitch_derivative = (pitch_error - pitch_prev_error) / dt.seconds();
-    double yaw_derivative = (yaw_error - yaw_prev_error) / dt.seconds();
+    const double roll_control_signal = roll_kp * roll_error + roll_ki * roll_integral + roll_kd * roll_derivative;
+    const double pitch_control_signal = pitch_kp * pitch_error + pitch_ki * pitch_integral + pitch_kd * pitch_derivative;
+    const double yaw_control_signal = yaw_kp * yaw_error + yaw_ki * yaw_integral + yaw_kd * yaw_derivative;
 
-    // Calculate the control signal using PID control
-    double roll_control_signal = roll_kp * roll_error + roll_ki * roll_integral + roll_kd * roll_derivative;
-    double pitch_control_signal = pitch_kp * pitch_error + pitch_ki * pitch_integral + pitch_kd * pitch_derivative;
-    double yaw_control_signal = yaw_kp * yaw_error + yaw_ki * yaw_integral + yaw_kd * yaw_derivative;
-    
-
-    roll_prev_error = roll_error;
-    pitch_prev_error = pitch_error;
-    yaw_prev_error = yaw_error;
-
-    std::array<double, 6> velocity_ = {roll_control_signal, pitch_control_signal, yaw_control_signal, rpy.at(0), rpy.at(1), rpy.at(2)};
-
-    return velocity_;
-    
+    return {roll_control_signal, pitch_control_signal, yaw_control_signal, rpy.at(0), rpy.at(1), rpy.at(2)};
 }
 
 private:
@@ -306,61 +285,81 @@ private:
 
     rclcpp::TimerBase::SharedPtr timer_;
     geometry_msgs::msg::PoseStamped pose_;
-    double base_speed_ = 117.0;
-    // Get the current ROS time
-    rclcpp::Time current_time = this->get_clock()->now();
+    // Rotor speeds [rad/s] that hold the drone in a hover, from the plugin's thrust map
+    // (c2 w^2 + c1 w + c0 per rotor) with a 0.73 kg drone, and with a 0.1 kg parcel attached.
+    static constexpr double kHoverSpeed = 738.7;
+    static constexpr double kHoverSpeedLoaded = 780.6;
+    double base_speed_ = kHoverSpeed;
+    // Loop timing
+    static constexpr double kNominalDt = 0.01;
+    rclcpp::Time last_tick_;
+    bool have_tick_ = false;
+
+    // Limits
+    static constexpr double kMaxTilt = 0.35;               // rad
+    static constexpr double kMaxHeightIntegral = 1.0;      // m s
+    static constexpr double kMaxAttitudeIntegral = 0.5;    // rad s
+
+    // Previous measurements, for derivatives on the measurement
+    double z_prev_ = 0.0;
+    double x_prev_ = 0.0;
+    double y_prev_ = 0.0;
+    double roll_prev_ = 0.0;
+    double pitch_prev_ = 0.0;
+    double yaw_prev_ = 0.0;
     // Initialize variables for PID control
     double integral = 0.0;
-    double prev_error = 0.0;
 
     // Roll
     double roll_integral = 0.0;
-    double roll_prev_error = 0.0;
 
     // Pitch
     double pitch_integral = 0.0;
-    double pitch_prev_error = 0.0;
 
     // Yaw
     double yaw_integral = 0.0;
-    double yaw_prev_error = 0.0;
 
     //Roll PID
-    double roll_kp = 2.5;
-    double roll_ki = 0.00001;
-    double roll_kd = 0.001;
+    double roll_kp = 128;
+    double roll_ki = 40;
+    double roll_kd = 25.6;
 
     //Pitch PID
-    double pitch_kp = 2.5;
-    double pitch_ki = 0.00001;
-    double pitch_kd = 0.001;
+    double pitch_kp = 128;
+    double pitch_ki = 40;
+    double pitch_kd = 25.6;
 
     //Yaw PID
-    double yaw_kp = 3.5;
-    double yaw_ki = 0.00001;
-    double yaw_kd = 0.004;
+    double yaw_kp = 148;
+    double yaw_ki = 10;
+    double yaw_kd = 79;
 
 
     // X pose 
     double x_integral = 0.0;
-    double x_prev_error = 0.0;
 
     // Y pose
     double y_integral = 0.0;
-    double y_prev_error = 0.0;
 
 
-    double x_kp = 0.03;
-    double x_ki = 0.0000000;
-    double x_kd = 0.0000008;
+    double x_kp = 0.065;
+    double x_ki = 0.0;
+    double x_kd = 0.147;
 
-    double y_kp = 0.013;
-    double y_ki = 0.0000000;
-    double y_kd = 0.0000008;
+    double y_kp = 0.065;
+    double y_ki = 0.0;
+    double y_kd = 0.147;
 
-    double kp = 11.5;
-    double ki = 0.2;
-    double kd = 7.1;
+    // Gains come from the plant model: near hover one rotor gives dT/dw = 0.0058 N per rad/s, the arm is
+    // 0.12 m and the drone is 0.73 kg with inertia diag(0.003942, 0.003942, 0.006132) kg m^2.
+    //   height:      z''   = 0.0318 * u      -> wn 2 rad/s, damping 0.8
+    //   roll, pitch: acc   = 0.5 * u         -> wn 8 rad/s, damping 0.8
+    //   yaw:         acc   = 0.0606 * u      -> wn 3 rad/s, damping 0.8
+    //   x, y:        x''   = 9.81 * tilt     -> wn 0.8 rad/s, damping 0.9
+    // Carrying a 0.1 kg parcel scales the height gains by 0.83 / 0.73.
+    double kp = 126.0;
+    double ki = 40.0;
+    double kd = 100.0;
 
     double target_x = 0.0;
     double target_y = 0.0;

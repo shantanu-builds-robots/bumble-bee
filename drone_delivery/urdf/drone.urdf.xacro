@@ -1,7 +1,10 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro" name="drone_delivery">
-  <xacro:property name="distance" value="0.167"/>
-  <xacro:property name="mass" value="1"/>
+  <!-- Mass model. Whole drone 0.73 kg, the default quadrotor in Flightmare (UZH Robotics and Perception Group).
+       Body 0.696 kg, four 5 g props, four 2 g legs, 5 g camera, 1 g IMU.
+       Whole-drone inertia uses Flightmare's formula J = m/12 * l^2 * diag(4.5, 4.5, 7) with this frame's 0.12 m arm,
+       giving diag(0.003942, 0.003942, 0.006132) kg m^2. The body values below are that minus the props' share. -->
+  <xacro:property name="mass" value="0.696"/>
   <material name="blue">
     <color rgba= "0 0 1 1"/>
   </material>
@@ -21,12 +24,12 @@
       <mass
         value="${mass}" />
       <inertia
-        ixx="${0.0833333 * mass * (distance * distance + distance/4 * distance/4)}"
+        ixx="0.003778"
         ixy="0"
         ixz="0"
-        iyy="${0.0833333 * mass * (distance * distance + distance/4 * distance/4)}"
+        iyy="0.003778"
         iyz="0"
-        izz="${0.0833333 * mass * (distance * distance + distance * distance)}" />
+        izz="0.005844" />
     </inertial>
     <visual>
       <origin
@@ -48,8 +51,15 @@
       </geometry>
     </collision>
   </link>
+  <!-- Bumble Bee colours, body in bee yellow (RGB 242 183 5) with black props and legs. Keep comments in this file free of hash signs and colons, or the drone plugin fails to load. -->
   <gazebo reference="base_link">
-    <material>Gazebo/Black</material>
+    <visual>
+      <material>
+        <ambient>0.949 0.718 0.020 1</ambient>
+        <diffuse>0.949 0.718 0.020 1</diffuse>
+        <specular>0.3 0.3 0.3 1</specular>
+      </material>
+    </visual>
   </gazebo>
   <link
     name="prop_1">
@@ -58,14 +68,14 @@
         xyz="1.38777878078145E-17 1.6252017232217E-05 1.38777878078145E-17"
         rpy="0 0 0" />
       <mass
-        value="0.1" />
+        value="0.005" />
       <inertia
-        ixx="6.26992620308679E-07"
-        ixy="-3.30120444584961E-24"
-        ixz="7.98941079078638E-09"
-        iyy="6.38900379274268E-07"
-        iyz="1.24797735656839E-23"
-        izz="1.55888758686964E-08" />
+        ixx="6.720e-06"
+        ixy="0"
+        ixz="0"
+        iyy="6.855e-06"
+        iyz="0"
+        izz="1.350e-07" />
     </inertial>
     <visual>
       <origin
@@ -116,14 +126,14 @@
         xyz="0 1.6252017232217E-05 -2.77555756156289E-17"
         rpy="0 0 0" />
       <mass
-        value="0.1" />
+        value="0.005" />
       <inertia
-        ixx="6.26992620308679E-07"
-        ixy="2.22863875678516E-24"
-        ixz="7.98941079078498E-09"
-        iyy="6.38900379274269E-07"
-        iyz="-7.82816974953869E-25"
-        izz="1.55888758686964E-08" />
+        ixx="6.720e-06"
+        ixy="0"
+        ixz="0"
+        iyy="6.855e-06"
+        iyz="0"
+        izz="1.350e-07" />
     </inertial>
     <visual>
       <origin
@@ -174,14 +184,14 @@
         xyz="2.77555756156289E-17 0.00301625201723221 -1.38777878078145E-17"
         rpy="0 0 0" />
       <mass
-        value="0.1" />
+        value="0.005" />
       <inertia
-        ixx="6.26992620308679E-07"
-        ixy="3.59808441353406E-24"
-        ixz="7.98941079078556E-09"
-        iyy="6.38900379274268E-07"
-        iyz="7.60544173089602E-24"
-        izz="1.55888758686964E-08" />
+        ixx="6.720e-06"
+        ixy="0"
+        ixz="0"
+        iyy="6.855e-06"
+        iyz="0"
+        izz="1.350e-07" />
     </inertial>
     <visual>
       <origin
@@ -233,14 +243,14 @@
         xyz="2.77555756156289E-17 0.00301625201723221 0"
         rpy="0 0 0" />
       <mass
-        value="0.1" />
+        value="0.005" />
       <inertia
-        ixx="6.26992620308678E-07"
-        ixy="7.16859571560985E-24"
-        ixz="7.98941079078488E-09"
-        iyy="6.38900379274267E-07"
-        iyz="2.55140400374983E-23"
-        izz="1.55888758686963E-08" />
+        ixx="6.720e-06"
+        ixy="0"
+        ixz="0"
+        iyy="6.855e-06"
+        iyz="0"
+        izz="1.350e-07" />
     </inertial>
     <visual>
       <origin
@@ -302,9 +312,9 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.001"/>
+      <mass value="0.002"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.000000001" ixy="0" ixz="0" iyy="0.000000001" iyz="0" izz="0.000000001"/>
+      <inertia ixx="1.0e-07" ixy="0" ixz="0" iyy="1.0e-07" iyz="0" izz="1.0e-08"/>
     </inertial>
   </link>
   <joint name="stand_1_joint" type="fixed">
@@ -329,9 +339,9 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.001"/>
+      <mass value="0.002"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.000000001" ixy="0" ixz="0" iyy="0.000000001" iyz="0" izz="0.000000001"/>
+      <inertia ixx="1.0e-07" ixy="0" ixz="0" iyy="1.0e-07" iyz="0" izz="1.0e-08"/>
     </inertial>
   </link>
   <joint name="stand_2_joint" type="fixed">
@@ -356,9 +366,9 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.001"/>
+      <mass value="0.002"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.000000001" ixy="0" ixz="0" iyy="0.000000001" iyz="0" izz="0.000000001"/>
+      <inertia ixx="1.0e-07" ixy="0" ixz="0" iyy="1.0e-07" iyz="0" izz="1.0e-08"/>
     </inertial>
   </link>
   <joint name="stand_3_joint" type="fixed">
@@ -383,9 +393,9 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.001"/>
+      <mass value="0.002"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.000000001" ixy="0" ixz="0" iyy="0.000000001" iyz="0" izz="0.000000001"/>
+      <inertia ixx="1.0e-07" ixy="0" ixz="0" iyy="1.0e-07" iyz="0" izz="1.0e-08"/>
     </inertial>
     
 
@@ -417,9 +427,9 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.001"/>
+      <mass value="0.005"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.000000001" ixy="0" ixz="0" iyy="0.000000001" iyz="0" izz="0.000000001"/>
+      <inertia ixx="4.0e-07" ixy="0" ixz="0" iyy="4.0e-07" iyz="0" izz="4.0e-07"/>
     </inertial>
   </link>
 
@@ -498,16 +508,28 @@
   </joint> -->
 
   <gazebo reference="prop_1">
-    <material>Gazebo/Green</material>
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="prop_2">
-    <material>Gazebo/Green</material>
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="prop_3">
-    <material>Gazebo/Green</material>
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="prop_4">
-    <material>Gazebo/Green</material>
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="stand_1">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="stand_2">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="stand_3">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="stand_4">
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="imu_link">
     <material>Gazebo/Orange</material>
@@ -522,8 +544,8 @@
 
   <joint name="motor_1">
       <command_interface name="velocity">
-          <param name="min">-1000.0</param>
-          <param name="max">1000.0</param>
+          <param name="min">-3000.0</param>
+          <param name="max">3000.0</param>
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -532,8 +554,8 @@
 
   <joint name="motor_2">
       <command_interface name="velocity">
-          <param name="min">-1000.0</param>
-          <param name="max">1000.0</param>
+          <param name="min">-3000.0</param>
+          <param name="max">3000.0</param>
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -541,8 +563,8 @@
 
   <joint name="motor_3">
       <command_interface name="velocity">
-          <param name="min">-1000.0</param>
-          <param name="max">1000.0</param>
+          <param name="min">-3000.0</param>
+          <param name="max">3000.0</param>
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -550,8 +572,8 @@
 
   <joint name="motor_4">
       <command_interface name="velocity">
-          <param name="min">-1000.0</param>
-          <param name="max">1000.0</param>
+          <param name="min">-3000.0</param>
+          <param name="max">3000.0</param>
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -571,10 +593,13 @@
       
       <!-- Keep this true if you want to visualize transforms for RViz -->
       <publishTf>true</publishTf>
-      <!-- Adjust the coefficient according to need -->
-
-      <rotorThrustCoeff>0.00025</rotorThrustCoeff>
-      <rotorTorqueCoeff>0.0000074</rotorTorqueCoeff>
+      <!-- Rotor model, from Flightmare's default quadrotor.
+           Thrust per rotor in newtons = c2 w^2 + c1 w + c0 (w in rad/s, never below zero), listed as c2 c1 c0.
+           Yaw reaction torque on the body = torqueToThrust times that thrust, in metres.
+           Rotor speed is capped at maxRotorSpeed rad/s. -->
+      <thrustMap>1.3298253500372892e-06 0.0038360810526746033 -1.7689986848125325</thrustMap>
+      <torqueToThrust>0.016</torqueToThrust>
+      <maxRotorSpeed>3000</maxRotorSpeed>
     </plugin>
     
   </gazebo>

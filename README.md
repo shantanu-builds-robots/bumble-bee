@@ -9,6 +9,7 @@
 <sub>▶ Click the image for the 30-second launch video.</sub>
 
 Bumble Bee was designed in SolidWorks, exported to URDF, and flown in Gazebo Classic with ROS 2.
+Its 5-inch-class frame flies with the mass and rotor model of a published research quadrotor (see [Physical model](#physical-model)).
 Gazebo can't fly a drone out of the box, so a custom plugin (`drone_plugin`) turns rotor speeds into
 thrust, publishes the drone's pose for feedback, and acts as a vacuum gripper.
 Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for Enhanced Drone Simulations](https://medium.com/@shantanuparab99/unleashing-the-power-of-simulation-engines-writing-plugins-for-enhanced-drone-simulations-ab7c847ca432).
@@ -19,14 +20,37 @@ Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for 
 
 | Piece | What it does | Where |
 |---|---|---|
-| **Flight plugin** | Thrust `k_t·ω²` along each rotor axis, reaction torque `k_q·ω\|ω\|`, net torque yaws the body (`k_t = 0.00025`, `k_q = 7.4e-6`) | `drone_plugin/src/drone_plugin.cpp` |
+| **Flight plugin** | Thrust `c₂ω² + c₁ω + c₀` along each rotor axis (rotor speed capped at 3000 rad/s); reaction torque `κ·thrust` on the body, whose net yaws the drone | `drone_plugin/src/drone_plugin_.cpp` |
 | **Vacuum gripper** | When the gripper is enabled and all four landing legs touch the same box, the box is welded to the body with a fixed joint | `drone_plugin` |
-| **Flight controller** | PID on height, roll, pitch, and yaw → per-rotor speeds; switches gains when carrying a parcel (117 → 118 rad/s base speed) | `drone_delivery/src/fly.cpp` |
+| **Flight controller** | 100 Hz cascaded PID: x/y position → tilt, then height, roll, pitch and yaw → per-rotor speeds around the hover speed; switches gains when carrying a parcel (738.7 → 780.6 rad/s hover speed) | `drone_delivery/src/fly.cpp` |
 | **Mission** | Visits 4 pick-up spots and 4 drop zones: fly over, descend, grip, carry, release | `drone_delivery/src/pick_and_drop.cpp` |
 | **Perception** | Detects and labels the ArUco (4×4) ID on each box from the downward camera | `drone_delivery/scripts/aruco_detector.py` |
 
 > The detector currently visualizes IDs; pick-up and drop-off coordinates are fixed in
 > `pick_and_drop.cpp`. Feeding detections into the mission is the natural next step.
+
+### Physical model
+
+The geometry comes from the SolidWorks model; the mass, inertia and rotor model come from the default
+quadrotor in [Flightmare](https://github.com/uzh-rpg/flightmare) (UZH Robotics and Perception Group,
+[`quadrotor_env.yaml`](https://github.com/uzh-rpg/flightmare/blob/master/flightlib/configs/quadrotor_env.yaml)),
+so the numbers are traceable to a published simulator model rather than to a CAD export.
+The inertia uses Flightmare's own formula with this frame's arm length.
+
+| Quantity | Value | Where |
+|---|---|---|
+| Mass | 0.73 kg: body 0.696, four 5 g props, four 2 g legs, 5 g camera, 1 g IMU | `drone.urdf.xacro` |
+| Arm length | 0.12 m (240 mm motor-to-motor diagonal) | SolidWorks model |
+| Inertia | diag(0.003942, 0.003942, 0.006132) kg·m², from `m/12 · l² · diag(4.5, 4.5, 7)` | `drone.urdf.xacro` |
+| Thrust per rotor | `1.3298e-6·ω² + 0.003836·ω − 1.769` N, never negative | `<thrustMap>` in the URDF |
+| Yaw reaction torque | `κ = 0.016` N·m per N of thrust | `<torqueToThrust>` |
+| Max rotor speed | 3000 rad/s (21.7 N per rotor, thrust-to-weight ≈ 12) | `<maxRotorSpeed>` |
+| Hover speed | 738.7 rad/s empty, 780.6 rad/s with a parcel | `fly.cpp` |
+| Parcel | 0.1 kg, 12 cm cube | `models/box_*/model.sdf`, `worlds/delivery_area.world` |
+
+> The [Medium write-up](https://medium.com/@shantanuparab99/unleashing-the-power-of-simulation-engines-writing-plugins-for-enhanced-drone-simulations-ab7c847ca432)
+> and the launch video describe the original model (a 1.4 kg CAD export with `k_t = 0.00025` and a 117 rad/s hover).
+> The plugin's structure is the same; only the numbers changed.
 
 ### Topics
 

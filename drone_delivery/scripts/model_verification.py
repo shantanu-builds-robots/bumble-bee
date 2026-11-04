@@ -37,16 +37,17 @@ class MinimalPublisher(Node):
         
         
         # Drone Parameters
-        self.m = 1.405 # mass of the drone
+        # Same rotor and mass model as the URDF and drone_plugin (Flightmare's default quadrotor)
+        self.m = 0.73 # mass of the drone [kg]
         self.g = 9.8 # gravity
-        self.k_th = 0.00025 # thrust coefficient
-        self.k_to = 0.0000074 # torque coefficient
-        self.l = 0.12 # arm length
-        
-        distance = 0.167
-        self.Ixx = 0.0833333 * self.m * (distance * distance + distance/4 * distance/4)
-        self.Iyy = 0.0833333 * self.m * (distance * distance + distance/4 * distance/4)
-        self.Izz = 0.0833333 * self.m * (distance * distance + distance * distance)
+        self.thrust_map = (1.3298253500372892e-06, 0.0038360810526746033, -1.7689986848125325) # thrust [N] = c2 w^2 + c1 w + c0
+        self.kappa = 0.016 # yaw reaction torque per newton of thrust [m]
+        self.l = 0.12 # arm length [m]
+
+        # Whole-drone inertia [kg m^2]: m/12 * l^2 * diag(4.5, 4.5, 7)
+        self.Ixx = self.m / 12.0 * self.l**2 * 4.5
+        self.Iyy = self.m / 12.0 * self.l**2 * 4.5
+        self.Izz = self.m / 12.0 * self.l**2 * 7.0
         self.a = 0.707 # angle between the arm and the x-axis (45 degrees)
         
         # State Variables
@@ -140,12 +141,14 @@ class MinimalPublisher(Node):
         prop3_speed = msg.velocity[2]
         prop4_speed = msg.velocity[3]
         # self.get_logger().info('Motor Speeds: "%f %f %f %f"' % (prop1_speed, prop2_speed, prop3_speed, prop4_speed))
-        Ui = np.array([[prop1_speed**2], [prop2_speed**2], [prop3_speed**2], [prop4_speed**2]])
-        T = np.array([[self.k_th, self.k_th, self.k_th, self.k_th],
-                     [self.k_th*self.l*np.cos(self.a), self.k_th*self.l*np.cos(self.a), -self.k_th*self.l*np.cos(self.a), -self.k_th*self.l*np.cos(self.a)],
-                     [self.k_th*self.l*np.sin(self.a), -self.k_th*self.l*np.sin(self.a), -self.k_th*self.l*np.sin(self.a), self.k_th*self.l*np.sin(self.a)],
-                     [self.k_to, -self.k_to, self.k_to, -self.k_to]])
-        self.U = np.dot(T, Ui)
+        c2, c1, c0 = self.thrust_map
+        speeds = np.abs(np.array([prop1_speed, prop2_speed, prop3_speed, prop4_speed]))
+        thrusts = np.maximum(0.0, c2 * speeds**2 + c1 * speeds + c0).reshape(4, 1)
+        T = np.array([[1, 1, 1, 1],
+                     [self.l*np.cos(self.a), self.l*np.cos(self.a), -self.l*np.cos(self.a), -self.l*np.cos(self.a)],
+                     [self.l*np.sin(self.a), -self.l*np.sin(self.a), -self.l*np.sin(self.a), self.l*np.sin(self.a)],
+                     [self.kappa, -self.kappa, self.kappa, -self.kappa]])
+        self.U = np.dot(T, thrusts)
         
         self.current_time = rclpy.clock.Clock().now().nanoseconds / 1e9
         self.dt = self.current_time - self.previous_time

@@ -15,6 +15,9 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <gazebo/common/Console.hh>
 #include <tf2_ros/transform_broadcaster.h>
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
 #include <memory>
 #include <mutex>
 
@@ -88,7 +91,7 @@ public:
 
   double calculateThrust(double w) ;
 
-  double calculateTorque(double w) ;
+  double calculateTorque(double w, double thrust) ;
 
   void OnContactUpdate(ConstContactsPtr &contacts);
 
@@ -98,8 +101,12 @@ public:
     //   Variable
   double _rate;
   bool _publish_tf;
-  double _rotor_thrust_coeff;
-  double _rotor_torque_coeff;
+  /// Thrust map: thrust [N] = c2*w^2 + c1*w + c0, w in rad/s (Flightmare's default quadrotor).
+  ignition::math::Vector3d _thrust_map{1.3298253500372892e-06, 0.0038360810526746033, -1.7689986848125325};
+  /// Yaw reaction torque [N m] per newton of thrust (Flightmare's kappa).
+  double _torque_to_thrust = 0.016;
+  /// Rotor speed limit [rad/s].
+  double _max_rotor_speed = 3000.0;
 
   bool picked_part = false;
 
@@ -212,23 +219,21 @@ void DronePlugin::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
       impl_->_publish_tf = true;
     }
    
-    if (sdf->HasElement("rotorThrustCoeff")) {
-      impl_->_rotor_thrust_coeff =
-         sdf->GetElement("rotorThrustCoeff")->Get<double>();
-    } else {
-      impl_->_rotor_thrust_coeff = 0.00025;
+    if (sdf->HasElement("thrustMap")) {
+      impl_->_thrust_map = sdf->GetElement("thrustMap")->Get<ignition::math::Vector3d>();
     }
-    std::cout << "Rotor thrust coeff: " << impl_->_rotor_thrust_coeff << std::endl;
+    std::cout << "Thrust map (c2 c1 c0): " << std::setprecision(10) << impl_->_thrust_map.X() << " "
+              << impl_->_thrust_map.Y() << " " << impl_->_thrust_map.Z() << std::setprecision(6) << std::endl;
 
-   
-    if (sdf->HasElement("rotorTorqueCoeff")) {
-      impl_->_rotor_torque_coeff =
-        sdf->GetElement("rotorTorqueCoeff")->Get<double>();
-
-    } else {
-      impl_->_rotor_torque_coeff = 0.0000074;
+    if (sdf->HasElement("torqueToThrust")) {
+      impl_->_torque_to_thrust = sdf->GetElement("torqueToThrust")->Get<double>();
     }
-    std::cout << "Rotor torque coeff: " << impl_->_rotor_torque_coeff << std::endl;
+    std::cout << "Torque to thrust ratio: " << impl_->_torque_to_thrust << std::endl;
+
+    if (sdf->HasElement("maxRotorSpeed")) {
+      impl_->_max_rotor_speed = sdf->GetElement("maxRotorSpeed")->Get<double>();
+    }
+    std::cout << "Max rotor speed: " << impl_->_max_rotor_speed << std::endl;
     
     // Set up a Gazebo update callback function.
     impl_->update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
@@ -432,21 +437,21 @@ void DronePluginPrivate::updateThrust() {
   int n = _motor_speed_msg->name.size();
   double resulant_torque = 0.0;
   for (int i = 0; i < n; ++i) {
-    // Calculate thrust and torque
-    double thrust = calculateThrust(_motor_speed_msg->velocity[i]);
-    double torque = calculateTorque(_motor_speed_msg->velocity[i]);
+    // Clamp to the motor's speed limit, then compute thrust and reaction torque
+    const double w = std::clamp(
+      static_cast<double>(_motor_speed_msg->velocity[i]), -_max_rotor_speed, _max_rotor_speed);
+    const double thrust = calculateThrust(w);
+    const double torque = calculateTorque(w, thrust);
 
-    // Add up the individual torques
+    // Add up the individual reaction torques; they act on the body, not on the props
     resulant_torque += torque;
 
     // Get the link from the model using the name
     gazebo::physics::LinkPtr link = _model->GetLink(_motor_speed_msg->name[i]);
-    
-    // Apply the thrust and torque to the link
+
+    // Thrust acts along the rotor's spin axis (the prop link's y axis)
     if (link != NULL) {
       link->AddLinkForce(ignition::math::Vector3d(0, thrust, 0));
-      link->AddRelativeTorque(ignition::math::Vector3d(0, torque, 0));
-
     }
   }
   // Apply the resultant torque to the base link
@@ -460,14 +465,15 @@ void DronePluginPrivate::updateThrust() {
 
 
 double DronePluginPrivate::calculateThrust(double w) {
-  double thrust = _rotor_thrust_coeff * w * w;
-  // std::cout << "Thrust: " << thrust << std::endl;
-  return thrust;
+  // Thrust depends on speed, not spin direction; a real prop never pulls downward here
+  const double speed = std::abs(w);
+  const double thrust = _thrust_map.X() * speed * speed + _thrust_map.Y() * speed + _thrust_map.Z();
+  return std::max(0.0, thrust);
 }
 
-double DronePluginPrivate::calculateTorque(double w) {
-  double torque = copysign(_rotor_torque_coeff * w * w, w);
-  return torque;
+double DronePluginPrivate::calculateTorque(double w, double thrust) {
+  // Reaction torque scales with thrust; its sign follows the commanded spin direction (props 2 and 4 are negative)
+  return std::copysign(_torque_to_thrust * thrust, w);
 }
 
 

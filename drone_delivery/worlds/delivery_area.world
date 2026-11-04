@@ -368,14 +368,14 @@
         </collision>
         <inertial>
           <inertia>
-            <ixx>0.00000552083</ixx>
+            <ixx>0.00024</ixx>
             <ixy>0</ixy>
             <ixz>0</ixz>
-            <iyy>0.00000552083</iyy>
+            <iyy>0.00024</iyy>
             <iyz>0</iyz>
-            <izz>0.0000106667</izz>
+            <izz>0.00024</izz>
           </inertia>
-          <mass>0.01</mass> 
+          <mass>0.1</mass> 
           <pose>0 0 0 0 -0 0</pose>
         </inertial>
         <self_collide>0</self_collide>
@@ -416,14 +416,14 @@
         </collision>
         <inertial>
           <inertia>
-            <ixx>0.00000552083</ixx>
+            <ixx>0.00024</ixx>
             <ixy>0</ixy>
             <ixz>0</ixz>
-            <iyy>0.00000552083</iyy>
+            <iyy>0.00024</iyy>
             <iyz>0</iyz>
-            <izz>0.0000106667</izz>
+            <izz>0.00024</izz>
           </inertia>
-          <mass>0.01</mass>
+          <mass>0.1</mass>
           <pose>0 0 0 0 -0 0</pose>
           <origin xyz='0 0 0' rpy='0 0 0'/>
         </inertial>
@@ -465,14 +465,14 @@
         </collision>
         <inertial>
           <inertia>
-            <ixx>0.00000552083</ixx>
+            <ixx>0.00024</ixx>
             <ixy>0</ixy>
             <ixz>0</ixz>
-            <iyy>0.00000552083</iyy>
+            <iyy>0.00024</iyy>
             <iyz>0</iyz>
-            <izz>0.0000106667</izz>
+            <izz>0.00024</izz>
           </inertia>
-          <mass>0.01</mass>
+          <mass>0.1</mass>
           <pose>0 0 0 0 -0 0</pose>
           <origin xyz='0 0 0' rpy='0 0 0'/>
         </inertial>
@@ -514,14 +514,14 @@
         </collision>
         <inertial>
           <inertia>
-            <ixx>0.00000552083</ixx>
+            <ixx>0.00024</ixx>
             <ixy>0</ixy>
             <ixz>0</ixz>
-            <iyy>0.00000552083</iyy>
+            <iyy>0.00024</iyy>
             <iyz>0</iyz>
-            <izz>0.0000106667</izz>
+            <izz>0.00024</izz>
           </inertia>
-          <mass>0.01</mass>
+          <mass>0.1</mass>
           <pose>0 0 0 0 -0 0</pose>
           <origin xyz='0 0 0' rpy='0 0 0'/>
         </inertial>

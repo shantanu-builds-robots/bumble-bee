@@ -267,7 +267,8 @@ private:
 
     geometry_msgs::msg::PoseStamped pose_;
 
-    double base_speed_ = 117.0;
+    // Informational only: published on /base_speed, which nothing subscribes to. fly.cpp owns the hover speed.
+    double base_speed_ = 738.7;
 
     bool pick_up = true;
     bool drop_off = false;

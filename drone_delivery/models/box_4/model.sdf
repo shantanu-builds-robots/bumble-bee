@@ -18,12 +18,17 @@
             </geometry>
         </collision>
         <inertial>
-      <mass value="0.01"/> <!-- Mass in kg -->
-      <origin xyz="0 0 0" rpy="0 0 0"/> <!-- Center of mass at the origin -->
-      <inertia ixx="0.00002133" ixy="0.0" ixz="0.0"
-               iyy="0.00002133" iyz="0.0"
-               izz="0.00002133"/> <!-- Inertia tensor values -->
-    </inertial>
+        <!-- 100 g parcel, 12 cm cube -->
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.00024</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00024</iyy>
+          <iyz>0</iyz>
+          <izz>0.00024</izz>
+        </inertia>
+      </inertial>
     </link>
   </model>
 </sdf>
