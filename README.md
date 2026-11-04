@@ -57,7 +57,7 @@ The inertia uses Flightmare's own formula with this frame's arm length.
 | Topic | Type | Direction |
 |---|---|---|
 | `motor_speed` | `drone_plugin/msg/MotorSpeed` (`name[]`, `velocity[]`) | `fly` → plugin |
-| `drone_pose` | `geometry_msgs/PoseStamped` | plugin → `fly`, `deliver` |
+| `drone_pose` | `geometry_msgs/PoseStamped`, stamped with the sim time of that physics step | plugin → `fly`, `deliver` |
 | `drone_velocity` | `geometry_msgs/Twist` | plugin → (spare) |
 | `enable_gripper` | `std_msgs/Bool` | `deliver` → plugin |
 | `part_attached` | `std_msgs/Bool` | plugin → `fly`, `deliver` |

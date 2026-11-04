@@ -364,8 +364,15 @@ void DronePluginPrivate::publishDronePose() {
     ignition::math::Vector3d linearVelocity = baseLink->WorldLinearVel();
     ignition::math::Vector3d angularVelocity = baseLink->WorldAngularVel();
 
+    // Stamp with the physics time this state belongs to. ros_node_->now() follows /clock, which
+    // gazebo_ros publishes only every 100 ms, so it would give ~100 poses the same stamp.
+    const gazebo::common::Time simTime = _model->GetWorld()->SimTime();
+    builtin_interfaces::msg::Time stamp;
+    stamp.sec = simTime.sec;
+    stamp.nanosec = simTime.nsec;
+
     // Extract position and orientation information
-    odometryMessage.header.stamp = ros_node_->now();
+    odometryMessage.header.stamp = stamp;
     odometryMessage.header.frame_id = base_link_name;  
     odometryMessage.pose.position.x = baseLinkPose.Pos().X();
     odometryMessage.pose.position.y = baseLinkPose.Pos().Y();
@@ -396,7 +403,7 @@ void DronePluginPrivate::publishDronePose() {
 
         // Read message content and assign it to
         // corresponding tf variables
-        t.header.stamp = ros_node_->now();
+        t.header.stamp = stamp;
         t.header.frame_id = world_frame_name;
         t.child_frame_id = base_link_name;
 
