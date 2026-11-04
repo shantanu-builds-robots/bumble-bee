@@ -95,6 +95,8 @@ public:
 
   void OnContactUpdate(ConstContactsPtr &contacts);
 
+  void updateGripper();
+
 
 
 
@@ -111,6 +113,13 @@ public:
   bool picked_part = false;
 
   bool enable_gripper = false;
+
+  // The contact callback runs on Gazebo's transport thread and the gripper command on the ROS executor
+  // thread. Neither may create or detach joints while physics is stepping (that segfaults gzserver at
+  // random), so both only record what they saw here; updateGripper() acts on it in the world update.
+  std::mutex gripper_mutex_;
+  std::string box_under_legs_;     // collision all four legs touch, or empty
+  bool detach_requested_ = false;
 
   gazebo::physics::LinkPtr baseLink;
 
@@ -248,21 +257,11 @@ void DronePlugin::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
 }
 
 void DronePluginPrivate::OnPickPart(const std_msgs::msg::Bool::SharedPtr msg) {
-  if (msg->data) {
-    std::cout << "Gripper Enabled" << std::endl;
-    enable_gripper = true;
-  } else if (!msg->data) {
-    std::cout << "Gripper Disabled" << std::endl;
-    enable_gripper = false;
-    if (picked_part) {
-      picked_part = false;
-      picked_part_joint_->Detach();
-
-      std_msgs::msg::Bool msg;
-      msg.data = false;
-      partAttachedPublisher->publish(msg);
-
-    }
+  std::lock_guard<std::mutex> lock(gripper_mutex_);
+  enable_gripper = msg->data;
+  std::cout << (msg->data ? "Gripper Enabled" : "Gripper Disabled") << std::endl;
+  if (!msg->data) {
+    detach_requested_ = true;
   }
 
 }
@@ -306,49 +305,52 @@ void DronePluginPrivate::OnContactUpdate(ConstContactsPtr &contacts) {
         model4_in_contact = contacts->contact(i).collision1().find("box") != std::string::npos ? contacts->contact(i).collision1() : contacts->contact(i).collision2();
       }
     }
-    std::cout << "Stand 1 " << model1_in_contact << std::endl;
-    std::cout << "Stand 2 " << model2_in_contact << std::endl;
-    std::cout << "Stand 3 " << model3_in_contact << std::endl;
-    std::cout << "Stand 4 " << model4_in_contact << std::endl;
-    
     model_in_contact = model1_in_contact;
 
   }
-  if (stand_1_collision && stand_2_collision && stand_3_collision && stand_4_collision && !picked_part && enable_gripper) {
+  const bool on_one_box = stand_1_collision && stand_2_collision && stand_3_collision && stand_4_collision &&
+      (model_in_contact == model2_in_contact || model_in_contact == model3_in_contact ||
+       model_in_contact == model4_in_contact);
+  std::lock_guard<std::mutex> lock(gripper_mutex_);
+  box_under_legs_ = on_one_box ? model_in_contact : std::string();
+}
 
-    if(model_in_contact == model2_in_contact || model_in_contact == model3_in_contact || model_in_contact == model4_in_contact) {
-      std::cout << "Ready to pick" << std::endl;
-    std::cout << "Model in contact: " << model_in_contact << std::endl;
-    model_collision_ = boost::dynamic_pointer_cast<gazebo::physics::Collision>(_model->GetWorld()->EntityByName(model_in_contact));
-    if (model_collision_ == NULL) {
-      std::cerr << "Model collision not found!" << std::endl;
-      return;
+void DronePluginPrivate::updateGripper() {
+  std::lock_guard<std::mutex> lock(gripper_mutex_);
+  if (detach_requested_) {
+    detach_requested_ = false;
+    if (picked_part) {
+      picked_part = false;
+      picked_part_joint_->Detach();
+      std_msgs::msg::Bool msg;
+      msg.data = false;
+      partAttachedPublisher->publish(msg);
     }
-    // Define the specific x, y, z position and roll, pitch, yaw orientation
-    double x = 0.0; // specify your x position here
-    double y = 0.0; // specify your y position here
-    double z = 0.012; // specify your z position here (optional)
-    double roll = 0.0; // specify your roll angle here
-    double pitch = 0.0; // specify your pitch angle here
-    double yaw = 0.0; // specify your yaw angle here
-
-    // Create the Pose3d object with the specified position and orientation
-    ignition::math::Pose3d pose(x, y, z, roll, pitch, yaw);
-
-    picked_part_joint_->Load(gripper_link_, model_collision_->GetLink(), pose);
-    picked_part_joint_->Init();
-
-    picked_part = true;
-    std_msgs::msg::Bool msg;
-    msg.data = true;
-    partAttachedPublisher->publish(msg);
-    }
-
-    
   }
+  if (!enable_gripper || picked_part || box_under_legs_.empty()) {
+    return;
+  }
+  std::cout << "Ready to pick" << std::endl;
+  std::cout << "Model in contact: " << box_under_legs_ << std::endl;
+  model_collision_ = boost::dynamic_pointer_cast<gazebo::physics::Collision>(_model->GetWorld()->EntityByName(box_under_legs_));
+  if (model_collision_ == NULL) {
+    std::cerr << "Model collision not found!" << std::endl;
+    box_under_legs_.clear();
+    return;
+  }
+  // Weld the box just under the gripper link.
+  ignition::math::Pose3d pose(0.0, 0.0, 0.012, 0.0, 0.0, 0.0);
+  picked_part_joint_->Load(gripper_link_, model_collision_->GetLink(), pose);
+  picked_part_joint_->Init();
+
+  picked_part = true;
+  std_msgs::msg::Bool msg;
+  msg.data = true;
+  partAttachedPublisher->publish(msg);
 }
 
 void DronePluginPrivate::onMotorSpeedsMsg(const drone_plugin::msg::MotorSpeed::SharedPtr msg)  {
+    std::lock_guard<std::mutex> lock(mutex_);  // updateThrust() reads it on the physics thread
     _motor_speed_msg = msg;
 }
 
@@ -427,6 +429,7 @@ void DronePluginPrivate::publishDronePose() {
  */
 void DronePluginPrivate::OnUpdate()
 {   
+    updateGripper();
     publishDronePose();
     updateThrust();
 
@@ -436,17 +439,21 @@ void DronePluginPrivate::OnUpdate()
 
 void DronePluginPrivate::updateThrust() {
   
-  if(!_motor_speed_msg){
+  std::shared_ptr<drone_plugin::msg::MotorSpeed> cmd;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);  // the ROS thread replaces the message concurrently
+    cmd = _motor_speed_msg;
+  }
+  if(!cmd){
     
   }
   else{
-  std::unique_lock<std::mutex> lock(mutex_);
-  int n = _motor_speed_msg->name.size();
+  int n = cmd->name.size();
   double resulant_torque = 0.0;
   for (int i = 0; i < n; ++i) {
     // Clamp to the motor's speed limit, then compute thrust and reaction torque
     const double w = std::clamp(
-      static_cast<double>(_motor_speed_msg->velocity[i]), -_max_rotor_speed, _max_rotor_speed);
+      static_cast<double>(cmd->velocity[i]), -_max_rotor_speed, _max_rotor_speed);
     const double thrust = calculateThrust(w);
     const double torque = calculateTorque(w, thrust);
 
@@ -454,7 +461,7 @@ void DronePluginPrivate::updateThrust() {
     resulant_torque += torque;
 
     // Get the link from the model using the name
-    gazebo::physics::LinkPtr link = _model->GetLink(_motor_speed_msg->name[i]);
+    gazebo::physics::LinkPtr link = _model->GetLink(cmd->name[i]);
 
     // Thrust acts along the rotor's spin axis (the prop link's y axis)
     if (link != NULL) {
@@ -463,7 +470,6 @@ void DronePluginPrivate::updateThrust() {
   }
   // Apply the resultant torque to the base link
   baseLink->AddRelativeTorque(ignition::math::Vector3d(0,0,resulant_torque));
-  lock.unlock();
   }
 
  
