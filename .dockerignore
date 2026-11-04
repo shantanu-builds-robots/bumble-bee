@@ -1,0 +1,8 @@
+.git
+brag-output*
+build
+install
+log
+devel
+**/__pycache__
+docs/media

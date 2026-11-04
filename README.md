@@ -6,7 +6,7 @@
 
 [![Watch the Bumble Bee launch video](docs/media/bumble-bee-launch.jpg)](docs/media/bumble-bee-launch.mp4)
 
-<sub>▶ Click the image for the 20-second launch video.</sub>
+<sub>▶ Click the image for the 30-second launch video.</sub>
 
 Bumble Bee was designed in SolidWorks, exported to URDF, and flown in Gazebo Classic with ROS 2.
 Gazebo can't fly a drone out of the box, so a custom plugin (`drone_plugin`) turns rotor speeds into
@@ -56,13 +56,22 @@ ros2 run drone_delivery deliver                    # delivery mission    (new te
 ros2 run drone_delivery aruco_detector.py          # optional: camera view with ArUco IDs
 ```
 
-### Or build in Docker
+### Run with Docker
+
+No local ROS install needed: the image has ROS 2 Humble, Gazebo Classic 11 and Bumble Bee already built. From the repository root:
 
 ```bash
-docker build -t bumble-bee:humble docker/
-docker run --rm -it -v "$PWD":/ws/src/drone_delivery bumble-bee:humble \
-  bash -c "cd /ws && colcon build && source install/setup.bash && bash"
+docker build -f docker/Dockerfile -t bumble-bee .
+xhost +local:docker   # once per login: lets the container open windows on your desktop
+docker run -it --rm --name bumble-bee --net=host -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix bumble-bee \
+  ros2 launch drone_delivery gazebo.launch.py
+
+# more terminals, while it runs:
+docker exec -it bumble-bee bash -ic "ros2 run drone_delivery fly"
+docker exec -it bumble-bee bash -ic "ros2 run drone_delivery deliver"
 ```
+
+Gazebo renders in software unless the container can reach your GPU: add `--device /dev/dri` (Intel/AMD) or `--gpus all` (NVIDIA, with the NVIDIA Container Toolkit) to `docker run`.
 
 ## Repository layout
 
