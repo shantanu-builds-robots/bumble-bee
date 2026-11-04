@@ -14,6 +14,10 @@
 #include <kdl/frames.hpp>
 #include <tf2_kdl/tf2_kdl.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <yaml-cpp/yaml.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 
 class Deliver : public rclcpp::Node
@@ -36,6 +40,23 @@ public:
     
     
     timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&Deliver::timer_callback, this), timer_callback_group_);
+    route_timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&Deliver::route_callback, this), timer_callback_group_);
+
+    // Optional mission file (planned by bumble-bee-gym's scripts/plan_mission.py): pickups, drops and
+    // the waypoints that route each leg around obstacles. Without one, every leg is a straight line.
+    const std::string mission = this->declare_parameter<std::string>("mission", "");
+    if (!mission.empty()) {
+        load_mission(mission);
+    }
+    for (size_t i = 0; i < pick_up_locations.size(); ++i) {
+        if (to_pickup_.size() <= i) to_pickup_.push_back({pick_up_locations[i]});
+        if (to_drop_.size() <= i) to_drop_.push_back({drop_off_locations[i]});
+    }
+    if (to_home_.empty()) to_home_ = {{home_x, home_y}};
+    pick_up_x = pick_up_locations[0].first;
+    pick_up_y = pick_up_locations[0].second;
+    drop_off_x = drop_off_locations[0].first;
+    drop_off_y = drop_off_locations[0].second;
 
 
     height_pub_ = this->create_publisher<std_msgs::msg::Float64>("height", 10);
@@ -58,6 +79,63 @@ public:
         part_attached = msg->data;
     }
 
+    using XY = std::pair<double, double>;
+
+    static std::vector<XY> read_points(const YAML::Node &node)
+    {
+        std::vector<XY> pts;
+        for (const auto &p : node) {
+            pts.emplace_back(p[0].as<double>(), p[1].as<double>());
+        }
+        return pts;
+    }
+
+    void load_mission(const std::string &path)
+    {
+        const YAML::Node m = YAML::LoadFile(path);
+        cruise_height = m["cruise"].as<double>();
+        home_height = cruise_height;
+        home_x = m["home"][0].as<double>();
+        home_y = m["home"][1].as<double>();
+        pick_up_locations.clear();
+        drop_off_locations.clear();
+        for (const auto &d : m["deliveries"]) {
+            pick_up_locations.emplace_back(d["pickup"][0].as<double>(), d["pickup"][1].as<double>());
+            drop_off_locations.emplace_back(d["drop"][0].as<double>(), d["drop"][1].as<double>());
+            to_pickup_.push_back(read_points(d["to_pickup"]));
+            to_drop_.push_back(read_points(d["to_drop"]));
+        }
+        to_home_ = read_points(m["to_home"]);
+        RCLCPP_INFO(get_logger(), "Mission %s: %zu deliveries, cruise %.2f m", path.c_str(),
+                    pick_up_locations.size(), cruise_height);
+    }
+
+    // Fly a leg: the route timer steers through the waypoints, ending on the leg's target.
+    void start_leg(const std::vector<XY> &waypoints)
+    {
+        route_ = waypoints;
+        route_index_ = 0;
+        route_callback();
+    }
+
+    void route_callback()
+    {
+        if (route_.empty()) {
+            return;
+        }
+        const bool last = route_index_ + 1 >= route_.size();
+        const XY &wp = route_[route_index_];
+        if (!last && std::hypot(x - wp.first, y - wp.second) < kWaypointTolerance) {
+            ++route_index_;
+            RCLCPP_INFO(get_logger(), "Waypoint %zu/%zu", route_index_ + 1, route_.size());
+        }
+        std_msgs::msg::Float64 x_msg, y_msg;
+        x_msg.data = route_[route_index_].first;
+        y_msg.data = route_[route_index_].second;
+        x_target_pub_->publish(x_msg);
+        y_target_pub_->publish(y_msg);
+    }
+
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
     {
         pose_ = *msg;
@@ -74,17 +152,13 @@ void timer_callback()
         // Go to pick up location
         if(go_to_location){
             RCLCPP_INFO(get_logger(), "Go to pick up location");
+            if (!leg_started_) {
+                start_leg(to_pickup_[index]);
+                leg_started_ = true;
+            }
             std_msgs::msg::Float64 height_msg;
-            height_msg.data = 0.7;
+            height_msg.data = cruise_height;
             height_pub_->publish(height_msg);
-
-            std_msgs::msg::Float64 x_target_msg;
-            x_target_msg.data = pick_up_x;
-            x_target_pub_->publish(x_target_msg);
-
-            std_msgs::msg::Float64 y_target_msg;
-            y_target_msg.data = pick_up_y;
-            y_target_pub_->publish(y_target_msg);
             // rclcpp::sleep_for(std::chrono::milliseconds(100));
             if (std::abs(x - pick_up_x) > 0.01 || std::abs(y - pick_up_y) > 0.01){
                 
@@ -92,6 +166,7 @@ void timer_callback()
                 return;
             }
             go_to_location = false;
+            leg_started_ = false;
 
             //Enable gripper
             std_msgs::msg::Bool enable_gripper_msg;
@@ -140,23 +215,20 @@ void timer_callback()
         // Go to drop off location
         if(go_to_location){
             RCLCPP_INFO(get_logger(), "Go to drop off location");
+            if (!leg_started_) {
+                start_leg(to_drop_[index]);
+                leg_started_ = true;
+            }
             std_msgs::msg::Float64 height_msg;
-            height_msg.data = 0.70;
+            height_msg.data = cruise_height;
             height_pub_->publish(height_msg);
-
-            std_msgs::msg::Float64 x_target_msg;
-            x_target_msg.data = drop_off_x;
-            x_target_pub_->publish(x_target_msg);
-
-            std_msgs::msg::Float64 y_target_msg;
-            y_target_msg.data = drop_off_y;
-            y_target_pub_->publish(y_target_msg);
             if (std::abs(x - drop_off_x) > 0.2 || std::abs(y - drop_off_y) > 0.2){
                 // rclcpp::sleep_for(std::chrono::milliseconds(100));
                 RCLCPP_INFO(get_logger(), "x: %f, y: %f", x, y);
                 return;
             }
             go_to_location = false;
+            leg_started_ = false;
         }
 
         // Lower the robot to the drop off location
@@ -205,23 +277,20 @@ void timer_callback()
             // Go to home
             if(go_to_location){
                 RCLCPP_INFO(get_logger(), "Go home");
+                if (!leg_started_) {
+                    start_leg(to_home_);
+                    leg_started_ = true;
+                }
                 std_msgs::msg::Float64 height_msg;
                 height_msg.data = home_height;
                 height_pub_->publish(height_msg);
-
-                std_msgs::msg::Float64 x_target_msg;
-                x_target_msg.data = home_x;
-                x_target_pub_->publish(x_target_msg);
-
-                std_msgs::msg::Float64 y_target_msg;
-                y_target_msg.data = home_y;
-                y_target_pub_->publish(y_target_msg);
                 if (std::abs(x - home_x) > 0.11 || std::abs(y - home_y) > 0.11){
                     // rclcpp::sleep_for(std::chrono::milliseconds(100));
                     RCLCPP_INFO(get_logger(), "x: %f, y: %f", x, y);
                     return;
                 }
                 go_to_location = false;
+                leg_started_ = false;
             }
             // Settle just above the pad first: dropping the height target straight from cruise to
             // zero brings the drone down at about 2 m/s.
@@ -276,6 +345,16 @@ private:
     int index = 0;
     
     rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::TimerBase::SharedPtr route_timer_;
+
+    // Route of the current leg (one waypoint per straight segment; the last is the leg's target)
+    static constexpr double kWaypointTolerance = 0.3;  // [m] switch to the next waypoint this close
+    std::vector<XY> route_;
+    size_t route_index_ = 0;
+    bool leg_started_ = false;
+    std::vector<std::vector<XY>> to_pickup_, to_drop_;
+    std::vector<XY> to_home_;
+    double cruise_height = 0.7;  // transit height [m]
 
     geometry_msgs::msg::PoseStamped pose_;
 

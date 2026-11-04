@@ -24,7 +24,7 @@ Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for 
 | **Flight plugin** | Thrust `c₂ω² + c₁ω + c₀` along each rotor axis (rotor speed capped at 3000 rad/s); reaction torque `κ·thrust` on the body, whose net yaws the drone | `drone_plugin/src/drone_plugin_.cpp` |
 | **Vacuum gripper** | When the gripper is enabled and all four landing legs touch the same box, the box is welded to the body with a fixed joint | `drone_plugin` |
 | **Flight controller** | 100 Hz cascaded PID: x/y position → tilt, then height, roll, pitch and yaw → per-rotor speeds around the hover speed; switches gains when carrying a parcel (738.4 → 780.2 rad/s hover speed) | `drone_delivery/src/fly.cpp` |
-| **Mission** | Visits 4 pick-up spots and 4 drop zones (fly over, descend, grip, carry, release), then flies home and lands on the pad it took off from | `drone_delivery/src/pick_and_drop.cpp` |
+| **Mission** | Visits 4 pick-up spots and 4 drop zones (fly over, descend, grip, carry, release), then flies home and lands on the pad it took off from. Given a mission file, it flies each leg through planned waypoints instead of a straight line | `drone_delivery/src/pick_and_drop.cpp` |
 | **Perception** | Detects and labels the ArUco (4×4) ID on each box from the downward camera | `drone_delivery/scripts/aruco_detector.py` |
 
 > The detector currently visualizes IDs; pick-up and drop-off coordinates are fixed in
@@ -100,6 +100,20 @@ ros2 launch drone_delivery gazebo.launch.py headless:=true pause:=true z:=2.0 \
 
 Obstacle and race courses for this drone, plus a MuJoCo twin of it, live in the companion
 `bumble-bee-gym` repo. It generates `.world` files you can pass straight to `world:=`.
+
+### Flying around obstacles
+
+`deliver` takes an optional mission file: the pick-ups, drops and home pad, plus waypoints that route each
+leg around buildings. bumble-bee-gym plans these offline (A* on the building footprints, kept 0.59 m
+clear) and writes them to `missions/<course>.yaml`. With the companion repo at `../bumble-bee-gym`:
+
+```bash
+ros2 launch drone_delivery gazebo.launch.py world:=$HOME/bumble-bee-gym/generated/delivery_city.world
+ros2 run drone_delivery fly
+ros2 run drone_delivery deliver --ros-args -p mission:=$HOME/bumble-bee-gym/missions/delivery_city.yaml
+```
+
+Without `mission`, `deliver` flies the original four deliveries in straight lines, as before.
 
 ### Run with Docker
 
