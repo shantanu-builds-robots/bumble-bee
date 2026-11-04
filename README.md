@@ -23,7 +23,7 @@ Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for 
 | **Flight plugin** | Thrust `c₂ω² + c₁ω + c₀` along each rotor axis (rotor speed capped at 3000 rad/s); reaction torque `κ·thrust` on the body, whose net yaws the drone | `drone_plugin/src/drone_plugin_.cpp` |
 | **Vacuum gripper** | When the gripper is enabled and all four landing legs touch the same box, the box is welded to the body with a fixed joint | `drone_plugin` |
 | **Flight controller** | 100 Hz cascaded PID: x/y position → tilt, then height, roll, pitch and yaw → per-rotor speeds around the hover speed; switches gains when carrying a parcel (738.4 → 780.2 rad/s hover speed) | `drone_delivery/src/fly.cpp` |
-| **Mission** | Visits 4 pick-up spots and 4 drop zones: fly over, descend, grip, carry, release | `drone_delivery/src/pick_and_drop.cpp` |
+| **Mission** | Visits 4 pick-up spots and 4 drop zones (fly over, descend, grip, carry, release), then flies home and lands on the pad it took off from | `drone_delivery/src/pick_and_drop.cpp` |
 | **Perception** | Detects and labels the ArUco (4×4) ID on each box from the downward camera | `drone_delivery/scripts/aruco_detector.py` |
 
 > The detector currently visualizes IDs; pick-up and drop-off coordinates are fixed in

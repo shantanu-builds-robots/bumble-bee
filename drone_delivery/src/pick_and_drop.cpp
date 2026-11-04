@@ -187,24 +187,26 @@ void timer_callback()
 
     }
     else{
-        index++;
-        std::pair<double,double> pick_up_location = pick_up_locations[index];
-        std::pair<double,double> drop_off_location = drop_off_locations[index];
+        // Next parcel while any are left. Checking first matters: indexing past the end of the
+        // vectors is undefined behaviour and used to send the drone to a garbage target.
+        if (index + 1 < static_cast<int>(pick_up_locations.size())) {
+            index++;
+            pick_up_x = pick_up_locations[index].first;
+            pick_up_y = pick_up_locations[index].second;
+            drop_off_x = drop_off_locations[index].first;
+            drop_off_y = drop_off_locations[index].second;
+            pick_up = true;
+            go_to_location = true;
+            return;
+        }
 
-        pick_up_x = pick_up_location.first;
-        pick_up_y = pick_up_location.second;
-
-        drop_off_x = drop_off_location.first;
-        drop_off_y = drop_off_location.second;
-
-        pick_up = true;
-        go_to_location = true;
-
-        if(index == 4){
+        // All parcels delivered: fly home and land.
+        {
             // Go to home
             if(go_to_location){
+                RCLCPP_INFO(get_logger(), "Go home");
                 std_msgs::msg::Float64 height_msg;
-                height_msg.data = 0.2;
+                height_msg.data = home_height;
                 height_pub_->publish(height_msg);
 
                 std_msgs::msg::Float64 x_target_msg;
@@ -221,12 +223,22 @@ void timer_callback()
                 }
                 go_to_location = false;
             }
-            // Lower the robot to the home location
-        
-                std_msgs::msg::Float64 height_msg;
-                height_msg.data = 0.0;
+            // Settle just above the pad first: dropping the height target straight from cruise to
+            // zero brings the drone down at about 2 m/s.
+            std_msgs::msg::Float64 height_msg;
+            if (!over_home_pad) {
+                height_msg.data = landing_approach_height;
                 height_pub_->publish(height_msg);
-                timer_->cancel();
+                if (height > landing_approach_height + 0.03) {
+                    return;
+                }
+                over_home_pad = true;
+            }
+            // Then set it down on the pad
+            RCLCPP_INFO(get_logger(), "Landing");
+            height_msg.data = 0.0;
+            height_pub_->publish(height_msg);
+            timer_->cancel();
         }
         
     
@@ -300,9 +312,12 @@ private:
     double target_height = 0.5;
 
     // Home location
-    double home_x = 0.0;
-    double home_y = 0.0;
-    double home_height = 0.2;
+    // Centre of the home landing pad, where the drone spawns (the pad spans 0..1 m in x and y).
+    double home_x = 0.5;
+    double home_y = 0.5;
+    double home_height = 0.7;  // cruise home at the same height as every other leg
+    double landing_approach_height = 0.25;  // about 0.1 m above the 0.1 m tall pad
+    bool over_home_pad = false;
 
     
     
