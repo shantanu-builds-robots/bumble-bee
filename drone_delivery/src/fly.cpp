@@ -33,6 +33,9 @@ public:
     height_sub_ = this->create_subscription<std_msgs::msg::Float64>("height", 10, std::bind(&Fly::height_callback, this, std::placeholders::_1));
     x_sub_ = this->create_subscription<std_msgs::msg::Float64>("target_x", 10, std::bind(&Fly::x_callback, this, std::placeholders::_1));
     y_sub_ = this->create_subscription<std_msgs::msg::Float64>("target_y", 10, std::bind(&Fly::y_callback, this, std::placeholders::_1));
+    // Moving reference from a trajectory: [x, y, vx, vy, ax, ay]. Sets the target and feeds its velocity
+    // and acceleration forward. Plain target_x / target_y messages leave both at zero.
+    ref_sub_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("target_ref", 10, std::bind(&Fly::ref_callback, this, std::placeholders::_1));
 
     part_attached_sub_ = this->create_subscription<std_msgs::msg::Bool>("part_attached", 10, std::bind(&Fly::part_attached_callback, this, std::placeholders::_1));
 
@@ -93,17 +96,31 @@ public:
     void x_callback(const std_msgs::msg::Float64::SharedPtr msg)
         {
             target_x = msg->data;
-            // yaw_kp = msg->data;
+            ref_vx_ = ref_vy_ = ref_ax_ = ref_ay_ = 0.0;  // a fixed target: nothing to feed forward
             // y_kp = msg->data;
         }
     
     void y_callback(const std_msgs::msg::Float64::SharedPtr msg)
         {
             target_y = msg->data;
-            // yaw_ki = msg->data;
+            ref_vx_ = ref_vy_ = ref_ax_ = ref_ay_ = 0.0;
             // y_ki = msg->data;
         }
     
+    void ref_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+        {
+            if (msg->data.size() != 6) {
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "target_ref needs 6 values, got %zu", msg->data.size());
+                return;
+            }
+            target_x = msg->data[0];
+            target_y = msg->data[1];
+            ref_vx_ = msg->data[2];
+            ref_vy_ = msg->data[3];
+            ref_ax_ = msg->data[4];
+            ref_ay_ = msg->data[5];
+        }
+
     void height_callback(const std_msgs::msg::Float64::SharedPtr msg)
         {   
             target_height = msg->data;
@@ -136,8 +153,15 @@ std::array<double, 3> get_euler_from_quaternion(tf2::Quaternion quaternion)
 
 void timer_callback()
 {
-    // One time step per tick, shared by every loop
-    const rclcpp::Time now = this->get_clock()->now();
+    // One time step per tick, shared by every loop. Time is the pose message's stamp, the sim time of
+    // that state: the wall clock drifts from it whenever Gazebo runs slower than real time, and then
+    // every velocity estimate (and so all the damping) is off by the same factor.
+    const rclcpp::Time now(pose_.header.stamp);
+    if (have_tick_ && now == last_tick_) {
+        // No new state since the last tick: repeat the last command rather than differentiate zero motion.
+        if (have_command_) publisher_->publish(last_command_);
+        return;
+    }
     const bool first_tick = !have_tick_;
     double dt = first_tick ? kNominalDt : (now - last_tick_).seconds();
     last_tick_ = now;
@@ -155,7 +179,7 @@ void timer_callback()
         auto message = drone_plugin::msg::MotorSpeed();
         message.name = std::vector<std::string>{"prop_1","prop_2","prop_3","prop_4"};
         message.velocity = std::vector<float>{prop_1, -prop_2, prop_3, -prop_4};
-        publisher_->publish(message);
+        publish_command(message);
     }
     else {
         // Calculate the control signal for height control
@@ -173,7 +197,7 @@ void timer_callback()
         auto message = drone_plugin::msg::MotorSpeed();
         message.name = std::vector<std::string>{"prop_1","prop_2","prop_3","prop_4"};
         message.velocity = std::vector<float>{prop_1, -prop_2, prop_3, -prop_4};
-        publisher_->publish(message);
+        publish_command(message);
 
         // Log once a second; the loop runs at 100 Hz
         RCLCPP_INFO_STREAM_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -201,13 +225,16 @@ std::array<double, 3> getRollPitchYaw(double target_x, double target_y, double d
     x_integral += x_error * dt;
     y_integral += y_error * dt;
 
-    const double x_derivative = -(x - x_prev_) / dt;
-    const double y_derivative = -(y - y_prev_) / dt;
+    // Velocity error against the reference's velocity (zero when holding a fixed target, which makes this
+    // derivative-on-measurement), so a moving target is tracked without a lag of kd/kp times its speed.
+    const double x_derivative = ref_vx_ - (x - x_prev_) / dt;
+    const double y_derivative = ref_vy_ - (y - y_prev_) / dt;
     x_prev_ = x;
     y_prev_ = y;
 
-    double x_control_signal = x_kp * x_error + x_ki * x_integral + x_kd * x_derivative;
-    double y_control_signal = y_kp * y_error + y_ki * y_integral + y_kd * y_derivative;
+    // Feedforward: the tilt that produces the reference's acceleration, a = g tan(tilt).
+    double x_control_signal = x_kp * x_error + x_ki * x_integral + x_kd * x_derivative + std::atan(ref_ax_ / kGravity);
+    double y_control_signal = y_kp * y_error + y_ki * y_integral + y_kd * y_derivative + std::atan(ref_ay_ / kGravity);
 
     x_control_signal = std::clamp(x_control_signal, -kMaxTilt, kMaxTilt);
     y_control_signal = std::clamp(y_control_signal, -kMaxTilt, kMaxTilt);
@@ -280,6 +307,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr height_sub_;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr x_sub_;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr y_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr ref_sub_;
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr part_attached_sub_;
 
@@ -294,10 +322,20 @@ private:
     // Loop timing
     static constexpr double kNominalDt = 0.01;
     rclcpp::Time last_tick_;
+    drone_plugin::msg::MotorSpeed last_command_;
+    bool have_command_ = false;
+
+    void publish_command(const drone_plugin::msg::MotorSpeed &message)
+    {
+        publisher_->publish(message);
+        last_command_ = message;
+        have_command_ = true;
+    }
     bool have_tick_ = false;
 
     // Limits
     static constexpr double kMaxTilt = 0.35;               // rad
+    static constexpr double kGravity = 9.8;                // m/s^2, as in the worlds
     static constexpr double kMaxHeightIntegral = 1.0;      // m s
     static constexpr double kMaxAttitudeIntegral = 0.5;    // rad s
 
@@ -364,6 +402,8 @@ private:
 
     double target_x = 0.0;
     double target_y = 0.0;
+    double ref_vx_ = 0.0, ref_vy_ = 0.0;   // [m/s] reference velocity (trajectory following only)
+    double ref_ax_ = 0.0, ref_ay_ = 0.0;   // [m/s^2] reference acceleration
     double target_height = 1.0;
 
     bool part_attached = false;

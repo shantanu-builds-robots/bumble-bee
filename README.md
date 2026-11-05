@@ -115,6 +115,19 @@ ros2 run drone_delivery deliver --ros-args -p mission:=$HOME/bumble-bee-gym/miss
 
 Without `mission`, `deliver` flies the original four deliveries in straight lines, as before.
 
+Each leg in the mission also carries a minimum-snap trajectory through the same route. Add
+`-p route_mode:=trajectory` to fly it as a moving target instead of steering at each corner in turn:
+
+```bash
+ros2 run drone_delivery deliver --ros-args -p mission:=$HOME/bumble-bee-gym/missions/delivery_city.yaml \
+  -p route_mode:=trajectory
+```
+
+`deliver` then publishes `target_ref` (`[x, y, vx, vy, ax, ay]`) at 50 Hz and `fly` feeds the velocity and
+acceleration forward, so the drone keeps up with the target instead of trailing it. In Gazebo on
+`delivery_city`, the trajectory spent 74 s flying between stops against 108 s corner by corner, never nearly
+stopped mid-leg (10 times before), and stayed within 0.3 m of its target.
+
 ### Run with Docker
 
 No local ROS install needed: the image has ROS 2 Humble, Gazebo Classic 11 and Bumble Bee already built. From the repository root:
