@@ -4,9 +4,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[![Watch the Bumble Bee launch video](docs/media/bumble-bee-launch.jpg)](docs/media/bumble-bee-launch.mp4)
 
-<sub>▶ Click the image for the 30-second launch video.</sub>
+https://github.com/user-attachments/assets/365e1bb8-0c45-4f4b-a397-afb03b404c54
+
+
 
 Bumble Bee was designed in SolidWorks, exported to URDF, and flown in Gazebo Classic with ROS 2.
 Its 5-inch-class frame flies with the mass and rotor model of a published research quadrotor (see [Physical model](#physical-model)).
