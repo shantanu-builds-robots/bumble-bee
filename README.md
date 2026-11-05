@@ -124,7 +124,7 @@ Gazebo renders in software unless the container can reach your GPU: add `--devic
 ├── drone_delivery/   ROS 2 package: URDF, meshes, worlds, box/pad models, launch, fly + deliver nodes, scripts
 ├── drone_plugin/     Gazebo plugin (libdrone.so) and the MotorSpeed message
 ├── docker/           Reproducible build environment (ROS 2 Humble + Gazebo 11)
-└── docs/media/       Launch video and screenshots
+└── docs/media/       Screenshots
 ```
 
 ## License
