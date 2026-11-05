@@ -115,7 +115,7 @@
   </library_effects>
   <library_images>
     <image id="th_jpg" name="th_jpg">
-      <init_from>th.jpg</init_from>
+      <init_from>landing_pad.jpg</init_from>
     </image>
   </library_images>
   <library_materials>
