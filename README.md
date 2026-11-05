@@ -45,6 +45,7 @@ The inertia uses Flightmare's own formula with this frame's arm length.
 | Thrust per rotor | `1.3298e-6·ω² + 0.003836·ω − 1.769` N, never negative | `<thrustMap>` in the URDF |
 | Yaw reaction torque | `κ = 0.016` N·m per N of thrust | `<torqueToThrust>` |
 | Max rotor speed | 3000 rad/s (21.7 N per rotor, thrust-to-weight ≈ 12) | `<maxRotorSpeed>` |
+| Prop spin (visual) | Each prop turns at its commanded speed ÷ 25, about 30 rad/s at hover, so it reads as spinning on video; lift comes from the thrust force | `<propSpinSlowdown>` |
 | Hover speed | 738.4 rad/s empty, 780.2 rad/s with a parcel (g = 9.8 m/s², as in the world) | `fly.cpp` |
 | Parcel | 0.1 kg, 12 cm cube | `models/box_*/model.sdf`, `worlds/delivery_area.world` |
 

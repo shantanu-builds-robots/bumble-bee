@@ -109,6 +109,8 @@ public:
   double _torque_to_thrust = 0.016;
   /// Rotor speed limit [rad/s].
   double _max_rotor_speed = 3000.0;
+  /// Props are shown turning at the rotor speed divided by this (visual only; thrust is a force).
+  double _prop_spin_slowdown = 25.0;
 
   bool picked_part = false;
 
@@ -239,6 +241,9 @@ void DronePlugin::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
     }
     std::cout << "Torque to thrust ratio: " << impl_->_torque_to_thrust << std::endl;
 
+    if (sdf->HasElement("propSpinSlowdown")) {
+      impl_->_prop_spin_slowdown = std::max(1.0, sdf->GetElement("propSpinSlowdown")->Get<double>());
+    }
     if (sdf->HasElement("maxRotorSpeed")) {
       impl_->_max_rotor_speed = sdf->GetElement("maxRotorSpeed")->Get<double>();
     }
@@ -466,6 +471,11 @@ void DronePluginPrivate::updateThrust() {
     // Thrust acts along the rotor's spin axis (the prop link's y axis)
     if (link != NULL) {
       link->AddLinkForce(ignition::math::Vector3d(0, thrust, 0));
+      // Turn the prop so it looks like it is spinning, slowed so it reads at video frame rates.
+      const auto joints = link->GetParentJoints();
+      if (!joints.empty()) {
+        joints.front()->SetVelocity(0, w / _prop_spin_slowdown);
+      }
     }
   }
   // Apply the resultant torque to the base link

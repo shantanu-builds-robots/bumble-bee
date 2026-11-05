@@ -537,44 +537,30 @@
 
   <!-- Transmission -->
   
+  <!-- State interfaces only, the props are spun by drone_plugin. A velocity command interface here
+       made gazebo_ros2_control write its (zero) command into the joints every step, pinning the props. -->
   <ros2_control name="GazeboSystem" type="system">
   <hardware>
       <plugin>gazebo_ros2_control/GazeboSystem</plugin>
   </hardware>
 
   <joint name="motor_1">
-      <command_interface name="velocity">
-          <param name="min">-3000.0</param>
-          <param name="max">3000.0</param>
-      </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
   </joint>
 
 
   <joint name="motor_2">
-      <command_interface name="velocity">
-          <param name="min">-3000.0</param>
-          <param name="max">3000.0</param>
-      </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
   </joint>
 
   <joint name="motor_3">
-      <command_interface name="velocity">
-          <param name="min">-3000.0</param>
-          <param name="max">3000.0</param>
-      </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
   </joint>
 
   <joint name="motor_4">
-      <command_interface name="velocity">
-          <param name="min">-3000.0</param>
-          <param name="max">3000.0</param>
-      </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
   </joint>
@@ -600,6 +586,9 @@
       <thrustMap>1.3298253500372892e-06 0.0038360810526746033 -1.7689986848125325</thrustMap>
       <torqueToThrust>0.016</torqueToThrust>
       <maxRotorSpeed>3000</maxRotorSpeed>
+      <!-- The props are turned at the commanded rotor speed divided by propSpinSlowdown, for show only
+           (thrust is applied as a force). At 25, hover is about 30 rad/s, which reads as spinning at 30 fps. -->
+      <propSpinSlowdown>25</propSpinSlowdown>
     </plugin>
     
   </gazebo>
