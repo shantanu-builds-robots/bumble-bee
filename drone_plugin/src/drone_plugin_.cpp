@@ -103,6 +103,10 @@ public:
     //   Variable
   double _rate;
   bool _publish_tf;
+  /// Pose and velocity publishing rate [Hz]; 0 publishes on every physics step.
+  double _publish_rate = 0.0;
+  /// Sim time of the last pose published [s].
+  double _last_publish = -1.0;
   /// Thrust map: thrust [N] = c2*w^2 + c1*w + c0, w in rad/s (Flightmare's default quadrotor).
   ignition::math::Vector3d _thrust_map{1.3298253500372892e-06, 0.0038360810526746033, -1.7689986848125325};
   /// Yaw reaction torque [N m] per newton of thrust (Flightmare's kappa).
@@ -164,12 +168,14 @@ void DronePlugin::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
 
     impl_->_model = model;
     impl_->ros_node_ = gazebo_ros::Node::Get(sdf);
-    impl_->droneOdomPublisher = impl_->ros_node_->create_publisher<geometry_msgs::msg::PoseStamped>("/drone_pose", 10);
-    impl_->velocityPublisher = impl_->ros_node_->create_publisher<geometry_msgs::msg::Twist>("/drone_velocity", 10);
-    impl_->partAttachedPublisher = impl_->ros_node_->create_publisher<std_msgs::msg::Bool>("/part_attached", 10);
+    // Relative topic names: they resolve to /drone_pose etc. by default, and to /<ns>/drone_pose when the model is
+    // spawned with a ROS namespace (spawn_entity.py -robot_namespace <ns>), so several drones can share one world.
+    impl_->droneOdomPublisher = impl_->ros_node_->create_publisher<geometry_msgs::msg::PoseStamped>("drone_pose", 10);
+    impl_->velocityPublisher = impl_->ros_node_->create_publisher<geometry_msgs::msg::Twist>("drone_velocity", 10);
+    impl_->partAttachedPublisher = impl_->ros_node_->create_publisher<std_msgs::msg::Bool>("part_attached", 10);
     // Create subscriber
     impl_->motor_speed_subscriber = impl_->ros_node_->create_subscription<drone_plugin::msg::MotorSpeed>(
-    "/motor_speed", 10, 
+    "motor_speed", 10, 
     std::bind(&DronePluginPrivate::onMotorSpeedsMsg, impl_.get(), std::placeholders::_1));
 
     impl_->pick_part_subscriber = impl_->ros_node_->create_subscription<std_msgs::msg::Bool>("enable_gripper", 10, std::bind(&DronePluginPrivate::OnPickPart, impl_.get(), std::placeholders::_1));
@@ -230,6 +236,11 @@ void DronePlugin::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
       impl_->_publish_tf = true;
     }
    
+    // Several drones in one world each publishing every 1 ms step slow Gazebo below real time; a swarm sets this.
+    if (sdf->HasElement("publishRate")) {
+      impl_->_publish_rate = std::max(0.0, sdf->GetElement("publishRate")->Get<double>());
+    }
+
     if (sdf->HasElement("thrustMap")) {
       impl_->_thrust_map = sdf->GetElement("thrustMap")->Get<ignition::math::Vector3d>();
     }
@@ -362,6 +373,13 @@ void DronePluginPrivate::onMotorSpeedsMsg(const drone_plugin::msg::MotorSpeed::S
 
 
 void DronePluginPrivate::publishDronePose() {
+    if (_publish_rate > 0.0) {
+      const double now = _model->GetWorld()->SimTime().Double();
+      if (_last_publish >= 0.0 && now - _last_publish < 1.0 / _publish_rate - 1e-9) {
+        return;
+      }
+      _last_publish = now;
+    }
 
     geometry_msgs::msg::PoseStamped odometryMessage;
     // Get the current pose of the base link.
