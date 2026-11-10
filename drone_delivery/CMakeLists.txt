@@ -29,6 +29,7 @@ find_package(drone_plugin REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_kdl REQUIRED)
 find_package(orocos_kdl REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 include_directories(include)
 include_directories(
@@ -55,6 +56,7 @@ ament_target_dependencies(fly  ${GROUP3_INCLUDE_DEPENDS})
 
 add_executable(deliver src/pick_and_drop.cpp )
 ament_target_dependencies(deliver  ${GROUP3_INCLUDE_DEPENDS})
+target_link_libraries(deliver yaml-cpp)
 
 install(DIRECTORY
   launch

@@ -1,9 +1,67 @@
 # Bumble Bee 🐝
 
-**A quadcopter that delivers parcels in Gazebo: it spots the box, grabs it with a vacuum gripper, and sets it down on the pad.**
+**A quadcopter that plans its own route around buildings and delivers parcels in Gazebo: it plans each leg with A*, flies it as a smooth minimum-snap trajectory, grabs the box with a vacuum gripper, and sets it down on the pad.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+## Path planning: flying around buildings
+
+![The planned mission flown in Gazebo, replayed at 10x (yellow trail = the drone's last 12 s)](docs/media/delivery_city_flight.gif)
+
+`delivery_city` is the delivery area with six buildings in the way: 7 of the mission's 9 straight-line legs
+run through one. The planner in [`path_planning/`](path_planning) routes every leg around them, offline,
+and writes a mission file that the `deliver` node flies.
+
+![Planned route (yellow) vs straight lines through buildings (red dashes)](path_planning/missions/delivery_city.png)
+
+| Step | What it does | Where |
+|---|---|---|
+| **Obstacles** | Every building taller than the 0.7 m cruise height, as its footprint rectangle (rotation included) | `path_planning/planner.py` |
+| **Clearance** | Paths keep 0.59 m from every wall: the drone's 0.19 m radius plus a 0.40 m margin for tracking error and corner cutting | `planner.py` |
+| **Search** | A* on a 5 cm grid, 8-connected, then string pulling: from each kept point, jump to the farthest point still in clear view. A leg that is already clear stays one straight line | `planner.py` |
+| **Trajectory** | A minimum-snap curve through each route: 7th-order segments, at rest at both ends, at most 2 m/s and 2 m/s². Any segment that comes within 0.55 m of a wall is split and refitted | `path_planning/trajectory.py` |
+| **Flight** | `deliver` publishes the trajectory as a moving target (`target_ref`: `[x, y, vx, vy, ax, ay]` at 50 Hz) and `fly` feeds the velocity and acceleration forward | `drone_delivery/src/pick_and_drop.cpp`, `fly.cpp` |
+
+**Results** on `delivery_city`, in Gazebo:
+
+- The plan is 68.7 m long against 64.8 m in straight lines; no leg is more than 20% longer. The whole mission plans in about 8 s.
+- All four parcels were delivered and the drone landed home. Its centre came no closer than 0.47 m to a wall, so the props kept 0.28 m clear.
+
+| | Corner by corner (waypoints) | Minimum-snap trajectory |
+|---|---|---|
+| Time flying between stops | 107.6 s | 74.2 s |
+| Whole mission, first leg to home | 189.0 s | 164.1 s |
+| Near-stops mid-leg | 10 | 0 |
+| Closest approach to a wall | 0.50 m | 0.47 m |
+
+![Flown in Gazebo (green) over the planned route (yellow)](docs/media/delivery_city_flight.png)
+
+### Plan and fly it
+
+```bash
+pip install -r path_planning/requirements.txt
+python3 path_planning/plan_mission.py delivery_city   # -> path_planning/missions/delivery_city.yaml + .png
+python3 -m pytest path_planning/tests                 # clearance and trajectory checks
+
+ros2 launch drone_delivery gazebo.launch.py \
+    world:=$(ros2 pkg prefix drone_delivery)/share/drone_delivery/worlds/delivery_city.world
+ros2 run drone_delivery fly                                                     # new terminal
+ros2 run drone_delivery deliver --ros-args -p mission:=$PWD/path_planning/missions/delivery_city.yaml \
+    -p route_mode:=trajectory                                                   # new terminal
+```
+
+Leave out `route_mode` to steer at each corner in turn, or `mission` to fly the original four deliveries in
+straight lines. The planned mission is already in the repository, so planning again is only needed after
+changing `path_planning/courses/delivery_city.yaml`.
+
+Check a flight log against the plan (CSV columns `t,x,y,z`):
+
+```bash
+python3 path_planning/check_clearance.py delivery_city pose.csv
+python3 path_planning/plot_flight.py delivery_city pose.csv -o flight.png
+```
+
+## The drone
 
 https://github.com/user-attachments/assets/365e1bb8-0c45-4f4b-a397-afb03b404c54
 
@@ -17,14 +75,14 @@ Full write-up: [Unleashing the Power of Simulation Engines: Writing Plugins for 
 
 ![Bumble Bee in the delivery area](docs/media/gazebo_delivery_area.png)
 
-## How it works
+### How it works
 
 | Piece | What it does | Where |
 |---|---|---|
 | **Flight plugin** | Thrust `c₂ω² + c₁ω + c₀` along each rotor axis (rotor speed capped at 3000 rad/s); reaction torque `κ·thrust` on the body, whose net yaws the drone | `drone_plugin/src/drone_plugin_.cpp` |
 | **Vacuum gripper** | When the gripper is enabled and all four landing legs touch the same box, the box is welded to the body with a fixed joint | `drone_plugin` |
 | **Flight controller** | 100 Hz cascaded PID: x/y position → tilt, then height, roll, pitch and yaw → per-rotor speeds around the hover speed; switches gains when carrying a parcel (738.4 → 780.2 rad/s hover speed) | `drone_delivery/src/fly.cpp` |
-| **Mission** | Visits 4 pick-up spots and 4 drop zones (fly over, descend, grip, carry, release), then flies home and lands on the pad it took off from | `drone_delivery/src/pick_and_drop.cpp` |
+| **Mission** | Visits 4 pick-up spots and 4 drop zones (fly over, descend, grip, carry, release), then flies home and lands on the pad it took off from. Given a mission file, it flies each leg through planned waypoints instead of a straight line | `drone_delivery/src/pick_and_drop.cpp` |
 | **Perception** | Detects and labels the ArUco (4×4) ID on each box from the downward camera | `drone_delivery/scripts/aruco_detector.py` |
 
 > The detector currently visualizes IDs; pick-up and drop-off coordinates are fixed in
@@ -98,9 +156,6 @@ ros2 launch drone_delivery gazebo.launch.py headless:=true pause:=true z:=2.0 \
     world:=$(ros2 pkg prefix drone_delivery)/share/drone_delivery/worlds/empty_world.world
 ```
 
-Obstacle and race courses for this drone, plus a MuJoCo twin of it, live in the companion
-`bumble-bee-gym` repo. It generates `.world` files you can pass straight to `world:=`.
-
 ### Run with Docker
 
 No local ROS install needed: the image has ROS 2 Humble, Gazebo Classic 11 and Bumble Bee already built. From the repository root:
@@ -121,6 +176,7 @@ Gazebo renders in software unless the container can reach your GPU: add `--devic
 ## Repository layout
 
 ```
+├── path_planning/    A* planner, minimum-snap trajectories, the delivery_city course and its planned mission
 ├── drone_delivery/   ROS 2 package: URDF, meshes, worlds, box/pad models, launch, fly + deliver nodes, scripts
 ├── drone_plugin/     Gazebo plugin (libdrone.so) and the MotorSpeed message
 ├── docker/           Reproducible build environment (ROS 2 Humble + Gazebo 11)
